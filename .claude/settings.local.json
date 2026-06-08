@@ -32,7 +32,9 @@
       "Bash(.venv/bin/pip show *)",
       "Bash(.venv/bin/python -c \"import multipart\")",
       "Bash(git check-ignore *)",
-      "Bash(grep -E '^\\\\.env$|\\\\.venv')"
+      "Bash(grep -E '^\\\\.env$|\\\\.venv')",
+      "Bash(.venv/bin/python -c \"import yaml,sys; yaml.safe_load\\(open\\('.github/workflows/ci.yml'\\)\\); print\\('ci.yml: valid YAML'\\)\")",
+      "Bash(python3 -c \"import yaml; yaml.safe_load\\(open\\('.github/workflows/ci.yml'\\)\\); print\\('ci.yml: valid YAML'\\)\")"
     ]
   }
 }

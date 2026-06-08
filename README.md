@@ -139,6 +139,10 @@ pytest tests/            # 58 passed
 .venv/bin/python -m pytest tests/ -q
 ```
 
+The same suite runs automatically in **GitHub Actions** on every push / PR to `main`
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Because the tests are hermetic,
+CI needs no Drive credentials.
+
 ### ☁️ Deploying
 
 Free-tier deploy config is committed: [`render.yaml`](render.yaml) (Render Blueprint) and [`Procfile`](Procfile) (Railway / Heroku-style). Start command:

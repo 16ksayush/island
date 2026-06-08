@@ -28,6 +28,9 @@ ENV/
 .coverage
 htmlcov/
 
+# ── Drive-bound staging (NOT part of the app; upload to the Drive `missing/` folder) ──
+drive_missing_upload/
+
 # ── OS / editor ──
 .DS_Store
 .DS_Store?
