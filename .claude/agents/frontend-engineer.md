@@ -20,6 +20,6 @@ Semantic HTML5, responsive layout grids via the Tailwind CSS CDN, custom CSS for
 - **Audio crossfade engine:** landing plays `global/{theme}_ambient.mp3`; entering `/level/{id}` fades global ambient out while fading the level track in (reverse on return). Existing levels use `static/audio/{theme}/level_{id}.mp3`; missing levels use the random fallback audio the backend proxies from the Drive `missing/` folder.
 - Handle audio contexts defensively for browser auto-play restrictions (start/resume on user gesture; fail silently if blocked).
 - Consume the backend endpoints defined by the SOLUTIONS_ARCHITECT; never embed API keys in client code.
-- Every file you write or alter must be passed to the SECURITY_ENGINEER for review before it is considered frozen.
+- Every file you write or alter must be passed to the SECURITY_ENGINEER for audit, then to the QA_TESTER for tests — it is not frozen until it is both audited AND verified.
 
 Return the files written/changed and any notes on theme/audio behavior.

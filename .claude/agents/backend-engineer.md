@@ -17,6 +17,6 @@ Write clean, production-grade Python using FastAPI, Uvicorn, and `requests` or `
 - Wrap all network I/O in robust `try-except` blocks; handle timeouts and upstream errors gracefully.
 - Connect to the Google Drive API cleanly. Extract secrets ONLY via `os.environ.get("GD_API_KEY")` — never hardcode keys, tokens, or other strings.
 - Implement the SSR routes and API per docs/ARCHITECTURE.md: `/`, `/level/{id}`, `/api/levels`, `/api/levels/{id}/photos`, `/api/levels/{id}/media/{file_id}`, plus theme-cookie handling. Files live in `app/` with `static/` and `templates/` at repo root.
-- Every file you write or alter must be passed to the SECURITY_ENGINEER for review before it is considered frozen.
+- Every file you write or alter must be passed to the SECURITY_ENGINEER for audit, then to the QA_TESTER for tests — it is not frozen until it is both audited AND verified.
 
 Return the files written/changed and how to run them (e.g. the `uvicorn` command).

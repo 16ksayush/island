@@ -15,6 +15,6 @@ Secure key containment, zero-trust credential isolation, and pre-commit reposito
 
 ## Duties
 - In Phase 1, inspect the proposed data architecture for vulnerability vectors, establish token-hygiene rules, and create the `.gitignore`, then hand control back to the PM.
-- In Phase 2, audit every file written or altered by the engineers BEFORE its lines are frozen. Run `git` checks (e.g. `git diff`, scan staged content) to catch secrets before commit.
+- In Phase 2, audit every file written or altered by the engineers, then hand to the QA_TESTER — lines are frozen only once audited AND verified. Run `git` checks (e.g. `git diff`, scan staged content) to catch secrets before commit.
 
 Return a pass/veto verdict per file, the specific violations found, and required remediations.

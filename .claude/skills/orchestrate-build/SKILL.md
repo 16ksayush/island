@@ -26,6 +26,7 @@ Map persona names to subagents:
 | BACKEND_ENGINEER | `backend-engineer` |
 | FRONTEND_ENGINEER | `frontend-engineer` |
 | SECURITY_ENGINEER | `security-engineer` |
+| QA_TESTER | `qa-tester` |
 
 ## Phase 1 — Discovery & Blueprinting Loop
 1. Dispatch **PM**: process the user's prompt, build an abstract milestones checklist, scaffold basic directories. → calls ARCHITECT.
@@ -38,9 +39,12 @@ Map persona names to subagents:
 1. After user sign-off, dispatch **PM** to compile the Task Backlog.
 2. **PM** sequences tasks and dispatches **BACKEND_ENGINEER** and **FRONTEND_ENGINEER** to write/modify files in the project directory.
 3. After every file is written or altered, dispatch **SECURITY_ENGINEER** to audit it BEFORE the lines are frozen. Honor its veto — remediate before continuing.
-4. **PM** runs the local `uvicorn` smoke test, tracks completeness, and produces Render/Railway deployment instructions (env vars: `GD_API_KEY`).
+4. Once a unit of work passes the security audit, dispatch **QA_TESTER** to write/run automated tests (pytest + TestClient, Drive mocked) and verify it against the requirements. A unit is **not frozen until tests pass**. On failure, hand the defect back to the owning engineer (step 2) and re-audit/re-test.
+5. **PM** runs the full test suite + local `uvicorn` smoke test, tracks completeness, and produces Render/Railway deployment instructions (env vars: `GD_API_KEY`, `GD_ROOT_FOLDER`).
 
 ## Rules
 - Always pass the prior persona's output forward as context to the next subagent.
 - Respect the SECURITY_ENGINEER's veto absolutely — no secret-exposing code is ever frozen.
+- A unit of work is **done only when it is both audited (SECURITY) and verified (QA_TESTER)**.
+- QA_TESTER mocks all Google Drive calls — tests stay hermetic and pass with placeholder assets.
 - Keep the user informed at each hand-off using the syntax above.

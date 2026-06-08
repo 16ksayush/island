@@ -10,7 +10,7 @@ Status: **DRAFT** — backlog ready; Phase 2 starts after asset data (Open Q1) i
 - [ ] **M4 — Landing grid:** dynamic Corridor Grid ⇄ Island Map; renders configured levels + missing tiles.
 - [ ] **M5 — Level pages:** `/level/{id}` (`level.html`) room/beach presentation; image rendering via proxy.
 - [ ] **M6 — Audio engine:** global ambient per theme + per-level crossfade, auto-play-safe.
-- [ ] **M7 — Harden & test:** error handling, missing-folder paths, security audit per file, local `uvicorn` smoke test.
+- [ ] **M7 — Harden, test & verify:** error handling, missing-folder paths, security audit per file, **QA_TESTER pytest suite (Drive mocked) + behavioral checks**, local `uvicorn` smoke test. No unit frozen until audited AND tests pass.
 - [ ] **M8 — Deploy:** Render/Railway config, `GD_API_KEY` env var, live verification.
 
 ## Sequenced backlog (Phase 2 — `orchestrate-build` after sign-off)
@@ -22,12 +22,14 @@ Status: **DRAFT** — backlog ready; Phase 2 starts after asset data (Open Q1) i
 | T4 | `drive_service.py`: Drive client under parent folder, child-discovery scaling, `missing/` image fallback | backend-engineer | T3 |
 | T5 | `main.py`: `/`, `/level/{id}`, `/api/levels`, `/api/levels/{id}/photos`, `/api/.../media/...`, theme cookie | backend-engineer | T4 |
 | T6 | Security audit of backend files (key isolation, missing-path safety) | security-engineer | T5 |
+| T6b | **Backend test suite** (pytest + TestClient, Drive mocked): routes, dynamic discovery, missing fallback, theme cookie, error handling | qa-tester | T6 |
 | T7 | `style.css` dual-theme classes + global theme toggle (cookie + sessionStorage) | frontend-engineer | T5 |
 | T8 | `index.html` dynamic Corridor/Island grid | frontend-engineer | T7 |
 | T9 | `level.html` room/beach level page + proxied images | frontend-engineer | T7, T5 |
 | T10 | Audio crossfade engine (global ⇄ level), auto-play-safe | frontend-engineer | T8, T9, Q1 |
 | T11 | Security audit of frontend files | security-engineer | T10 |
-| T12 | Local `uvicorn` smoke test + missing-folder + theme-toggle verification | project-manager | T6, T11 |
+| T11b | **Frontend/behavioral tests**: SSR theme class per cookie, grid renders configured levels + missing tiles, route smoke checks | qa-tester | T11 |
+| T12 | Full suite run + local `uvicorn` smoke test + missing-folder + theme-toggle verification | project-manager | T6b, T11b |
 | T13 | Render/Railway deploy config + instructions | project-manager | T12 |
 
 ## Gate
