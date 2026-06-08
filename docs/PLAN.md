@@ -63,7 +63,9 @@ Status: **Discovery COMPLETE — design approved (ARCHITECTURE §8), decisions L
 - HQ4 — Ambient motion: **ON, subtle**, frozen under `prefers-reduced-motion`.
 
 ### Milestone
-- [ ] **M9 — Horror Atmosphere Redesign (frontend-only):** Cinematic haunted-corridor background on the Horror landing and a horror ambiance behind each per-level stage, via the existing `.atmosphere` overlay + `.theme-horror` `--page-bg-image`/`--vignette` injection points. Door grid layout, all functionality, performance (prefetch/cache), accessibility (`prefers-reduced-motion`), responsiveness, and theme isolation (Sea untouched) all preserved. Security-audited + QA-regression-verified before freeze.
+> **⚠️ Shipped design (2026-06-09) diverged from the locks above.** HQ1 ("pure CSS/SVG, no raster asset") and HR3 ("keep the door grid, restyle only") were **superseded**: the Horror landing now uses a full-bleed **raster illustrated map** (`static/img/horror/landing-map.v2.jpg`) that *replaces* the door grid, with %-positioned clickable hotspots → `/level/{id}` (`?calibrate` to tune them). Drifting ghosts/silhouettes/fog and the full per-level corridor scene (HQ2/HQ3/HQ4) shipped as planned. Sea theme untouched. See REQUIREMENTS §9.3 note and ARCHITECTURE §8.3 note.
+
+- [x] **M9 — Horror Atmosphere Redesign + landing map (frontend-only):** Cinematic haunted-corridor background on the Horror landing and a horror ambiance behind each per-level stage, via the existing `.atmosphere` overlay + `.theme-horror` `--page-bg-image`/`--vignette` injection points. Door grid layout, all functionality, performance (prefetch/cache), accessibility (`prefers-reduced-motion`), responsiveness, and theme isolation (Sea untouched) all preserved. Security-audited + QA-regression-verified before freeze.
 
 ### Sequenced backlog (M9 — after Open Questions resolved)
 | # | Task | Owner | Depends on |

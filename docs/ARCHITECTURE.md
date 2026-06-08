@@ -160,6 +160,8 @@ z-index   layer                         lives in / mechanism
 Key point: there are **only two real DOM additions possible**, and both are optional/inside the existing div. The moonlight glow, vignette, and fog are produced by the `.atmosphere` element's `background` + its `::before`/`::after` pseudo-elements — **zero new DOM** for the core scene. This guarantees the door grid (`.layer`, z-index 1) always renders above and remains clickable.
 
 ## 8.3 CSS-vs-asset approach — recommended default: pure CSS/SVG (HQ1, HQ2)
+> **⚠️ Shipped design (2026-06-09) overrides this recommendation for the Horror landing.** The landing adopted the **raster fallback** path (see "Raster fallback" below): a full-bleed illustrated map (`static/img/horror/landing-map.v2.jpg`) replaces the door grid, with %-positioned clickable hotspots (`.horror-map` / `.map-hotspot`) over the art. The per-level page still uses the pure CSS/SVG atmosphere described here. The recommendation below remains accurate for the level page and for the decorative silhouettes/fog on both pages.
+
 **Recommendation: pure CSS + optional inline SVG. No raster image.** Rationale: near-zero bytes (NF-HR1), fully responsive, theme-isolated, instantly themeable, no licensing/attribution, no extra network request, no blocking asset.
 
 ### Tokens that change (all inside `.theme-horror` only)

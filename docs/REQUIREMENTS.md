@@ -83,6 +83,9 @@ A dark haunted corridor at night with:
 - Illustrated / vector, cinematic, eerie.
 
 ### 9.3 Functional requirements
+
+> **⚠️ Superseded by the shipped design (2026-06-09).** The Horror landing was redesigned beyond a restyle: the door grid is **replaced** for the Horror theme by a full-bleed illustrated haunted map (`static/img/horror/landing-map.v2.jpg`) whose 19 locations are %-positioned clickable hotspots to `/level/{id}`. This means **HR1** (the landing is now a raster map, not a CSS-only corridor field), **HR3** (the door grid does *not* stay intact for Horror — it is superseded by the map; the Sea grid is unchanged), and **HR4/HQ1** (a raster asset is now used, not pure CSS/SVG) no longer hold as written. The decorative silhouettes/fog (HR5–HR8) and the per-level horror scene (HR2) shipped as specified. The Sea theme is untouched.
+
 | # | Requirement | Priority |
 |---|---|---|
 | HR1 | Horror **landing** (`index.html`) renders a cinematic haunted-corridor BACKGROUND replacing the flat near-black field, in a navy/blue palette with a central moonlit focal point. | Must |

@@ -4,7 +4,7 @@ An interactive web gallery with a **dynamically-scaled** number of levels (0 →
 
 | THEME A — 🕯️ Horror | THEME B — 🏝️ Sea & Island |
 |---|---|
-| Haunted Gothic Corridor — levels are *doors / rooms* along an eerie hallway | Sunlit Archipelago Map — levels are *islands* across an open ocean |
+| Illustrated **haunted map** — numbered destinations / doorways across an eerie landscape (clickable hotspots) | Sunlit Archipelago — levels are *islands* across an open ocean |
 | `#0D0D0D` obsidian + `#FFB000` molten amber, shadowed vignette | `#E0F2FE`/`#0284C7` azures + warm sand, white coral, palm green |
 | Continuous atmospheric horror soundtrack | Bright, relaxing ocean/acoustic ambient |
 
@@ -39,7 +39,7 @@ An interactive web gallery with a **dynamically-scaled** number of levels (0 →
 ## 🏛️ Architecture (overview)
 
 ```
-Browser (corridor grid / island map)
+Browser (Horror = illustrated haunted map w/ hotspots · Sea = dynamic island grid)
    │  GET /level/{id}  (SSR page)          │  GET /api/levels/{id}/photos
    ▼                                        ▼
 FastAPI (app/main.py) ── reads theme cookie ── renders level.html
@@ -57,7 +57,7 @@ Audio loads from /static/audio/...  (no Drive, no key).
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/` | Landing page; dynamic grid sized to discovered levels; theme from cookie |
+| GET | `/` | Landing page; **Horror** = full-bleed illustrated map with %-positioned clickable hotspots (`?calibrate` outlines them), **Sea** = dynamic island grid sized to discovered levels; theme from cookie |
 | GET | `/level/{id}` | Dedicated, theme-styled level page (room / beach) |
 | GET | `/api/levels` | Discovered levels + `available` flag (here `available` = the numbered folder exists) |
 | GET | `/api/levels/{id}/photos` | Image refs for a level + fallback audio (here `available` = folder exists **and** is non-empty) |
@@ -77,12 +77,15 @@ island/
 │   └── drive_service.py   # Drive client, child discovery, missing/ fallback
 ├── static/
 │   ├── style.css          # .theme-horror / .theme-sea
+│   ├── img/
+│   │   ├── horror/        # landing-map.v2.jpg (Horror landing art)
+│   │   └── light/         # landing-map.png
 │   └── audio/
 │       ├── global/        # horror_ambient.mp3, sea_ambient.mp3
 │       ├── horror/        # level_0.mp3 … level_18.mp3
 │       └── sea/           # level_0.mp3 … level_18.mp3
 ├── templates/
-│   ├── index.html         # landing: Corridor Grid ⇄ Island Map
+│   ├── index.html         # landing: Haunted Map (Horror) ⇄ Island Grid (Sea)
 │   └── level.html         # level page: room ⇄ beach by theme
 ├── docs/                  # REQUIREMENTS · ARCHITECTURE · PLAN
 ├── requirements.txt       # fastapi, uvicorn, jinja2, httpx
@@ -213,6 +216,7 @@ Build is **complete** through M7; deploy config is ready (M8 = live verification
 - [x] **M6 — Audio engine** — per-theme ambient + per-level crossfade
 - [x] **M7 — Harden, test & verify** — error handling, full pytest suite (58 passed, Drive mocked), local uvicorn smoke test
 - [ ] **M8 — Deploy** — Render/Railway config committed (`render.yaml` / `Procfile`); live verification pending
+- [x] **M9 — Horror landing redesign** — replaced the Horror door grid with a full-bleed illustrated haunted map; each of the 19 locations is a %-positioned clickable hotspot to `/level/{id}` (sealed styling for unavailable levels), plus drifting ghost/silhouette atmosphere. Supersedes the original "restyle-only / keep door grid" plan (HR3) and the pure-CSS approach (HQ1). The Sea theme keeps the dynamic grid, untouched.
 
 ---
 

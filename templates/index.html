@@ -7,60 +7,141 @@
 
     <!-- Tailwind via CDN (layout); style.css holds theme tokens + atmosphere. -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/style.css?v=3" />
   </head>
 
   <body class="theme-{{ theme }} min-h-screen">
     <!-- pointer-transparent vignette / sky overlay -->
-    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="atmosphere" aria-hidden="true">
+      {% if theme != 'sea' %}
+      <!-- M9 horror-only decorative scene: pure inline SVG silhouettes, behind
+           the door grid (.layer, z-1). All aria-hidden + pointer-events:none.
+           Never rendered for the Sea theme. Does not touch the grid markup. -->
+      <div class="horror-scene" aria-hidden="true">
+        <!-- Moonlit doorway focal glow at the far center (vanishing point). -->
+        <svg class="horror-silhouette horror-silhouette--doorway" viewBox="0 0 100 160" preserveAspectRatio="xMidYMin meet" focusable="false">
+          <defs>
+            <radialGradient id="hr-moon" cx="50%" cy="42%" r="60%">
+              <stop offset="0%" stop-color="#cfe0ff" stop-opacity="0.9" />
+              <stop offset="55%" stop-color="#9fb6e0" stop-opacity="0.35" />
+              <stop offset="100%" stop-color="#9fb6e0" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <rect x="30" y="6" width="40" height="148" rx="20" fill="url(#hr-moon)" />
+        </svg>
 
+        <!-- Cloaked hooded figure: faint, low-center, anchored to the bottom
+             gutter BELOW the grid so it never sits under a clickable door. -->
+        <svg class="horror-silhouette horror-silhouette--figure" viewBox="0 0 120 180" preserveAspectRatio="xMidYMax meet" focusable="false">
+          <path fill="#02040a" d="M60 8c-16 0-27 12-27 30 0 9 3 16 8 21-8 6-14 17-17 33-4 22-6 41-6 58h84c0-17-2-36-6-58-3-16-9-27-17-33 5-5 8-12 8-21 0-18-11-30-27-30z" />
+        </svg>
+
+        <!-- Clawed hands reaching from the left/right viewport edges only. -->
+        <svg class="horror-silhouette horror-silhouette--claw-left" viewBox="0 0 80 120" preserveAspectRatio="xMinYMax meet" focusable="false">
+          <path fill="#02040a" d="M0 60c10-2 18-6 26-12 3 14 4 27 3 40-1-9-3-17-7-24 6 10 9 21 9 33-3-10-7-19-13-26 4 11 6 22 5 33-4-12-9-22-16-31 1 12 1 23-1 34C-2 110-2 84 0 60z" />
+        </svg>
+        <svg class="horror-silhouette horror-silhouette--claw-right" viewBox="0 0 80 120" preserveAspectRatio="xMinYMax meet" focusable="false">
+          <path fill="#02040a" d="M0 60c10-2 18-6 26-12 3 14 4 27 3 40-1-9-3-17-7-24 6 10 9 21 9 33-3-10-7-19-13-26 4 11 6 22 5 33-4-12-9-22-16-31 1 12 1 23-1 34C-2 110-2 84 0 60z" />
+        </svg>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if theme != 'sea' %}
+    <!-- ============ HORROR LANDING: full-bleed illustrated map ============
+         The map art (static/img/horror/landing-map.jpg) fills the viewport and
+         replaces the door grid. Each painted location is a %-positioned
+         clickable hotspot -> /level/{id}; availability/sealed styling comes from
+         the backend-discovered `levels`. All 19 locations 0-18 are on the art.
+         Append `?calibrate` to the URL to outline + number the hotspots for
+         fine-tuning. -->
+    {% set available_ids = levels | selectattr('available') | map(attribute='id') | list %}
+    {#- (x%, y%) = center of each painted location number, measured from the art -#}
+    {% set coords = {
+      0:[8.0,8.5], 1:[28.5,11.0], 2:[47.5,10.5], 3:[66.5,14.0], 4:[83.0,25.0],
+      5:[16.0,33.0], 6:[33.0,31.0], 7:[51.0,32.0], 8:[71.5,37.0], 9:[90.5,45.0],
+      10:[10.5,52.0], 11:[31.0,58.0], 12:[51.0,57.0], 13:[70.0,59.0], 14:[89.0,65.0],
+      15:[16.0,81.0], 16:[39.0,82.0], 17:[58.0,83.0], 18:[78.0,85.0]
+    } %}
+    <div class="layer horror-landing">
+      <h1 class="sr-only">Tour-de-Anshika — choose a destination</h1>
+
+      <!-- Ambient drifting ghosts in the side margins (decorative, inert).
+           Animated drift/fade; frozen under prefers-reduced-motion. -->
+      <div class="horror-ambient" aria-hidden="true">
+        {% for g in range(6) %}
+        <svg class="horror-ghost horror-ghost--{{ g }}" viewBox="0 0 50 64" focusable="false" aria-hidden="true">
+          <path d="M25 2C13 2 6 11 6 24v34l5-5 5 5 4-5 5 5 5-5 4 5 5-5V24C44 11 37 2 25 2z" />
+          <circle cx="19" cy="25" r="2.6" fill="#0a0e1a" />
+          <circle cx="31" cy="25" r="2.6" fill="#0a0e1a" />
+        </svg>
+        {% endfor %}
+      </div>
+
+      <!-- Global theme toggle, overlaid on the map (present on EVERY page). -->
+      <button
+        id="theme-toggle"
+        type="button"
+        class="theme-toggle horror-map-toggle"
+        aria-label="Toggle between Horror and Sea themes"
+      >
+        <span class="toggle-icon" aria-hidden="true">🌊</span>
+        <span>Sail to the Sea</span>
+      </button>
+
+      <div class="horror-map" aria-label="Map of Tour-de-Anshika — choose a destination">
+        <img
+          class="horror-map-img"
+          src="/static/img/horror/landing-map.v2.jpg"
+          alt="A haunted map of Tour-de-Anshika with numbered destinations"
+          fetchpriority="high"
+          decoding="async"
+        />
+        <div class="horror-map-hotspots">
+          {% for id, xy in coords.items() %}
+          <a
+            class="map-hotspot{% if id not in available_ids %} is-sealed{% endif %}"
+            href="/level/{{ id }}"
+            style="left: {{ xy[0] }}%; top: {{ xy[1] }}%;"
+            aria-label="Level {{ id }}{% if id not in available_ids %} (sealed — fallback content){% endif %}"
+          >
+            <span class="map-hotspot-ring" aria-hidden="true"></span>
+            <span class="map-hotspot-id" aria-hidden="true">{{ id }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <!-- SEA LANDING: dynamic island grid (unchanged, constrained layout). -->
     <div class="layer mx-auto max-w-6xl px-4 py-8">
-      <!-- Header + global theme toggle (present on EVERY page) -->
       <header class="flex items-center justify-between gap-4 flex-wrap mb-8">
         <div>
           <h1 class="page-title text-3xl sm:text-4xl m-0">Tour-de-Anshika</h1>
-          <p class="muted m-0 mt-1 text-sm">
-            {% if theme == 'sea' %}
-              An open archipelago — choose an island.
-            {% else %}
-              A haunted corridor — choose a door.
-            {% endif %}
-          </p>
+          <p class="muted m-0 mt-1 text-sm">An open archipelago — choose an island.</p>
         </div>
-
         <button
           id="theme-toggle"
           type="button"
           class="theme-toggle"
           aria-label="Toggle between Horror and Sea themes"
         >
-          <span class="toggle-icon" aria-hidden="true">
-            {% if theme == 'sea' %}🌙{% else %}🌊{% endif %}
-          </span>
-          <span>
-            {% if theme == 'sea' %}Enter the Corridor{% else %}Sail to the Sea{% endif %}
-          </span>
+          <span class="toggle-icon" aria-hidden="true">🌙</span>
+          <span>Enter the Corridor</span>
         </button>
       </header>
 
-      <!-- Dynamic grid: render EXACTLY the levels the backend discovered. -->
       <main>
         {% if levels and levels|length > 0 %}
         <section
-          aria-label="{% if theme == 'sea' %}Island map{% else %}Corridor of doors{% endif %}"
+          aria-label="Island map"
           class="grid gap-5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
         >
           {% for lvl in levels %}
           {% if lvl.available %}
-          <a
-            class="level-tile"
-            href="/level/{{ lvl.id }}"
-            aria-label="Level {{ lvl.id }}{% if theme == 'sea' %} island{% else %} door{% endif %}"
-          >
+          <a class="level-tile" href="/level/{{ lvl.id }}" aria-label="Level {{ lvl.id }} island">
             <span class="level-number">{{ lvl.id }}</span>
-            <span class="level-label">
-              {% if theme == 'sea' %}Island{% else %}Door{% endif %}
-            </span>
+            <span class="level-label">Island</span>
           </a>
           {% else %}
           <a
@@ -70,9 +151,7 @@
           >
             <span class="badge-unavailable">Lost</span>
             <span class="level-number">{{ lvl.id }}</span>
-            <span class="level-label">
-              {% if theme == 'sea' %}Sunken{% else %}Sealed{% endif %}
-            </span>
+            <span class="level-label">Sunken</span>
           </a>
           {% endif %}
           {% endfor %}
@@ -90,6 +169,7 @@
         Tour-de-Anshika · Dual-Atmosphere Dynamic Gallery
       </footer>
     </div>
+    {% endif %}
 
     <!-- Shared scripts: theme persistence/toggle + audio crossfade engine. -->
     <script src="/static/theme.js"></script>
@@ -177,6 +257,19 @@
         } else {
           window.setTimeout(runPrefetch, 1200);
         }
+      })();
+    </script>
+    <script>
+      // Hotspot calibration aid: append `?calibrate` (or `#calibrate`) to the
+      // landing URL to outline + number every map hotspot so positions can be
+      // fine-tuned by eye. No effect on the normal experience.
+      (function () {
+        var on =
+          location.search.indexOf("calibrate") !== -1 ||
+          location.hash.indexOf("calibrate") !== -1;
+        if (!on) return;
+        var map = document.querySelector(".horror-map");
+        if (map) map.classList.add("calibrate");
       })();
     </script>
   </body>
