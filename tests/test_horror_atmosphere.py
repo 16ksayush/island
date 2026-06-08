@@ -108,19 +108,23 @@ def test_decorative_layer_has_no_interactive_elements(client, path):
 
 
 # ===========================================================================
-# 4. Door grid + functionality intact (HR3, NF-HR5).
+# 4. Horror landing nav + functionality intact (HR3, NF-HR5).
 #    (Belt-and-braces alongside test_frontend.py — proves the redesign did not
-#     alter the grid/tile/toggle/slideshow contract.)
+#     alter the hotspot/toggle/slideshow contract.)
 # ===========================================================================
 def test_grid_tile_markup_contract_unchanged(client):
+    # Superseded by the M9 map redesign: the door GRID (`class="level-tile"` +
+    # `badge-unavailable` "Lost" badge) is gone, replaced by 19 `.map-hotspot`
+    # anchors. Converted to assert the equivalent Horror-map availability
+    # contract so the invariant (available 1/2/8 vs sealed rest) keeps coverage.
     html = client.get("/").text
-    # Available tiles keep the exact `class="level-tile" href="/level/{id}"` form.
-    available_tiles = re.findall(
-        r'<a\s+class="level-tile"\s+href="/level/(\d+)"', html
+    # Available hotspots keep the bare `class="map-hotspot" href="/level/{id}"`.
+    available_hotspots = re.findall(
+        r'<a\s+class="map-hotspot"\s+href="/level/(\d+)"', html
     )
-    assert sorted(int(x) for x in available_tiles) == [1, 2, 8]
-    # Unavailable tiles keep the is-unavailable + Lost badge contract.
-    assert html.count("badge-unavailable") == 6  # levels 0,3,4,5,6,7
+    assert sorted(int(x) for x in available_hotspots) == [1, 2, 8]
+    # Sealed hotspots carry is-sealed + the "(sealed — fallback content)" label.
+    assert html.count("(sealed — fallback content)") == 16  # levels 0,3-7,9-18
 
 
 def test_toggle_and_slideshow_js_intact(client):

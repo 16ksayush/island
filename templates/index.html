@@ -7,7 +7,7 @@
 
     <!-- Tailwind via CDN (layout); style.css holds theme tokens + atmosphere. -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/style.css?v=3" />
+    <link rel="stylesheet" href="/static/style.css?v=4" />
   </head>
 
   <body class="theme-{{ theme }} min-h-screen">
@@ -69,12 +69,23 @@
       <!-- Ambient drifting ghosts in the side margins (decorative, inert).
            Animated drift/fade; frozen under prefers-reduced-motion. -->
       <div class="horror-ambient" aria-hidden="true">
-        {% for g in range(6) %}
+        {% for g in range(9) %}
         <svg class="horror-ghost horror-ghost--{{ g }}" viewBox="0 0 50 64" focusable="false" aria-hidden="true">
           <path d="M25 2C13 2 6 11 6 24v34l5-5 5 5 4-5 5 5 5-5 4 5 5-5V24C44 11 37 2 25 2z" />
           <circle cx="19" cy="25" r="2.6" fill="#0a0e1a" />
           <circle cx="31" cy="25" r="2.6" fill="#0a0e1a" />
         </svg>
+        {% endfor %}
+
+        <!-- Faint static twinkle stars across the upper sky band. -->
+        {% for t in range(8) %}
+        <span class="horror-twinkle horror-twinkle--{{ t }}" aria-hidden="true"></span>
+        {% endfor %}
+
+        <!-- Shooting stars: a moving dot + thin tapering tail streaking
+             diagonally across the upper sky on long staggered loops. -->
+        {% for s in range(4) %}
+        <span class="horror-star horror-star--{{ s }}" aria-hidden="true"></span>
         {% endfor %}
       </div>
 
@@ -113,61 +124,97 @@
       </div>
     </div>
     {% else %}
-    <!-- SEA LANDING: dynamic island grid (unchanged, constrained layout). -->
-    <div class="layer mx-auto max-w-6xl px-4 py-8">
-      <header class="flex items-center justify-between gap-4 flex-wrap mb-8">
-        <div>
-          <h1 class="page-title text-3xl sm:text-4xl m-0">Tour-de-Anshika</h1>
-          <p class="muted m-0 mt-1 text-sm">An open archipelago — choose an island.</p>
-        </div>
-        <button
-          id="theme-toggle"
-          type="button"
-          class="theme-toggle"
-          aria-label="Toggle between Horror and Sea themes"
-        >
-          <span class="toggle-icon" aria-hidden="true">🌙</span>
-          <span>Enter the Corridor</span>
-        </button>
-      </header>
+    <!-- ============ SEA LANDING: full-bleed illustrated archipelago map ======
+         The map art (static/img/light/landing-map.v2.webp) fills the viewport and
+         replaces the island grid. Each painted island is a %-positioned clickable
+         hotspot -> /level/{id}; availability/sunken styling comes from the
+         backend-discovered `levels`. All 19 islands 0-18 are on the art.
+         Append `?calibrate` to the URL to outline + number the hotspots for
+         fine-tuning. Mirrors the M9 Horror map machinery; every CSS rule is
+         .theme-sea-scoped so Horror is untouched (NF-SR4). -->
+    {% set available_ids = levels | selectattr('available') | map(attribute='id') | list %}
+    {#- (x%, y%) = center of each painted island number, measured from THIS art -#}
+    {% set sea_coords = {
+      0:[23.5,18.7], 1:[34.9,18.4], 2:[45.8,19.9], 3:[57.3,18.6], 4:[70.0,19.9],
+      5:[24.3,47.2], 6:[35.3,46.4], 7:[45.7,47.2], 8:[38.5,60.1], 9:[68.2,47.2],
+      10:[23.9,71.7], 11:[35.3,71.7], 12:[72.5,91.5], 13:[57.3,71.4], 14:[68.2,71.6],
+      15:[46.1,88.2], 16:[46.1,71.2], 17:[57.5,89.4], 18:[85.9,71.2]
+    } %}
+    {% set sea_names = {
+      0:'Ruin', 1:'Crypt', 2:"Witch's Hut", 3:'Mausoleum', 4:'Ruined Abbey',
+      5:'Prison', 6:'Graveyard', 7:'Sealed', 8:'Sunken Temple', 9:'Forbidden',
+      10:'Cavern', 11:'Sepulcher', 12:'Watch Tower', 13:'Pit', 14:'Final Keep',
+      15:'Haunted Tower', 16:'Cursed Orchard', 17:"Dragon's Den", 18:'Forgotten Armory'
+    } %}
+    <div class="layer sea-landing">
+      <h1 class="sr-only">Tour-de-Anshika — choose an island</h1>
 
-      <main>
-        {% if levels and levels|length > 0 %}
-        <section
-          aria-label="Island map"
-          class="grid gap-5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
-        >
-          {% for lvl in levels %}
-          {% if lvl.available %}
-          <a class="level-tile" href="/level/{{ lvl.id }}" aria-label="Level {{ lvl.id }} island">
-            <span class="level-number">{{ lvl.id }}</span>
-            <span class="level-label">Island</span>
-          </a>
-          {% else %}
+      <!-- Ambient sky decoration in the margins/sky band (decorative, inert):
+           drifting hot-air balloons, gliding gulls, and soft clouds. Pure
+           inline SVG, aria-hidden + pointer-events:none, behind .sea-map (z-1).
+           All animations frozen under prefers-reduced-motion. -->
+      <div class="sea-ambient" aria-hidden="true">
+        <!-- Hot-air balloons: cheerful azure-palette canopy + basket. -->
+        {% for b in range(3) %}
+        <svg class="sea-balloon sea-balloon--{{ b }}" viewBox="0 0 60 90" focusable="false" aria-hidden="true">
+          <path d="M30 2C16 2 6 13 6 28c0 12 8 21 16 27h16c8-6 16-15 16-27C54 13 44 2 30 2z" fill="var(--bln-a)" />
+          <path d="M22 4c-7 4-12 13-12 24 0 11 5 21 12 27V4z" fill="var(--bln-b)" opacity="0.9" />
+          <path d="M38 4c7 4 12 13 12 24 0 11-5 21-12 27V4z" fill="var(--bln-c)" opacity="0.9" />
+          <rect x="25" y="56" width="10" height="3" rx="1" fill="#7a4a1f" />
+          <path d="M26 59l-1 9h10l-1-9z" fill="#9c6b35" />
+          <path d="M25 56l3-6M35 56l-3-6" stroke="#5c3a16" stroke-width="0.8" fill="none" />
+        </svg>
+        {% endfor %}
+
+        <!-- Gull silhouettes: simple gliding "m"/V wing shape. -->
+        {% for g in range(5) %}
+        <svg class="sea-bird sea-bird--{{ g }}" viewBox="0 0 40 16" focusable="false" aria-hidden="true">
+          <path d="M2 12C8 4 14 4 20 9c6-5 12-5 18 3-6-3-11-2-18 3-7-5-12-6-18-3z" fill="#3a5a72" />
+        </svg>
+        {% endfor %}
+
+        <!-- Soft drifting cloud puffs. -->
+        {% for c in range(2) %}
+        <svg class="sea-cloud sea-cloud--{{ c }}" viewBox="0 0 100 44" focusable="false" aria-hidden="true">
+          <path d="M20 38c-9 0-16-6-16-14 0-7 6-13 14-13 2-7 9-11 16-11 9 0 16 6 18 14 7 0 13 5 13 12 0 7-6 12-14 12z" fill="#ffffff" />
+        </svg>
+        {% endfor %}
+      </div>
+
+      <!-- Global theme toggle, overlaid on the painted pill (present on EVERY
+           page). Reuses id="theme-toggle" so theme.js wires it unchanged. -->
+      <button
+        id="theme-toggle"
+        type="button"
+        class="theme-toggle sea-map-toggle"
+        aria-label="Toggle between Horror and Sea themes"
+      >
+        <span class="toggle-icon" aria-hidden="true">🌙</span>
+        <span>Enter the Corridor</span>
+      </button>
+
+      <div class="sea-map" aria-label="Map of Tour-de-Anshika — choose an island">
+        <img
+          class="sea-map-img"
+          src="/static/img/light/landing-map.v2.webp"
+          alt="An illustrated archipelago map of Tour-de-Anshika with numbered islands"
+          fetchpriority="high"
+          decoding="async"
+        />
+        <div class="sea-map-hotspots">
+          {% for id, xy in sea_coords.items() %}
           <a
-            class="level-tile is-unavailable"
-            href="/level/{{ lvl.id }}"
-            aria-label="Level {{ lvl.id }} (unavailable — fallback content)"
+            class="map-hotspot{% if id not in available_ids %} is-sealed{% endif %}"
+            href="/level/{{ id }}"
+            style="left: {{ xy[0] }}%; top: {{ xy[1] }}%;"
+            aria-label="Level {{ id }} — {{ sea_names[id] }}{% if id not in available_ids %} (sunken — fallback content){% endif %}"
           >
-            <span class="badge-unavailable">Lost</span>
-            <span class="level-number">{{ lvl.id }}</span>
-            <span class="level-label">Sunken</span>
+            <span class="map-hotspot-ring" aria-hidden="true"></span>
+            <span class="map-hotspot-id" aria-hidden="true">{{ id }}</span>
           </a>
-          {% endif %}
           {% endfor %}
-        </section>
-        {% else %}
-        <section class="text-center py-20">
-          <p class="muted text-lg">
-            No levels are configured yet. Check back once the archive is populated.
-          </p>
-        </section>
-        {% endif %}
-      </main>
-
-      <footer class="mt-12 text-center muted text-xs">
-        Tour-de-Anshika · Dual-Atmosphere Dynamic Gallery
-      </footer>
+        </div>
+      </div>
     </div>
     {% endif %}
 
@@ -268,7 +315,7 @@
           location.search.indexOf("calibrate") !== -1 ||
           location.hash.indexOf("calibrate") !== -1;
         if (!on) return;
-        var map = document.querySelector(".horror-map");
+        var map = document.querySelector(".horror-map, .sea-map");
         if (map) map.classList.add("calibrate");
       })();
     </script>

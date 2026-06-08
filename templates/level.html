@@ -128,6 +128,9 @@
         var theme = "{{ theme }}";
         var levelId = {{ level_id | tojson }};
         var ssrAvailable = {{ available | tojson }};
+        // Local per-theme track ids (static/audio/{theme}/level_*.mp3); the pool
+        // for a missing level's random fallback music.
+        var localTrackIds = {{ audio_track_ids | tojson }};
 
         var track = document.getElementById("track");
         var loading = document.getElementById("loading");
@@ -257,13 +260,19 @@
           if (!window.Archive19Audio) return;
           var src;
           if (fallbackAudio && fallbackAudio.url) {
-            // Missing level (R3): proxied stock track from Drive `missing/`.
+            // (Legacy) proxied fallback track, if the backend ever supplies one.
             src = fallbackAudio.url;
-          } else {
-            // Existing level: per-theme local static track.
+          } else if (ssrAvailable) {
+            // Existing level: its own per-theme local static track.
             src = "/static/audio/" + theme + "/level_" + levelId + ".mp3";
+          } else if (localTrackIds && localTrackIds.length) {
+            // Missing level: no per-level track of its own — play a RANDOM local
+            // track for the active theme (theme-appropriate fallback music).
+            var rid =
+              localTrackIds[Math.floor(Math.random() * localTrackIds.length)];
+            src = "/static/audio/" + theme + "/level_" + rid + ".mp3";
           }
-          window.Archive19Audio.crossfadeToLevel(src);
+          if (src) window.Archive19Audio.crossfadeToLevel(src);
         }
 
         // Seed the ambient channel so the crossfade has something to wind down

@@ -472,18 +472,20 @@ async def get_level_photos(level_id: int) -> LevelPhotos:
                 )
             # Present but empty -> fall through to missing fallback (R5).
 
-        # Missing-level fallback: re-roll a FRESH random image + audio per call
-        # (R3) from the cached missing/ pool.
-        missing_images, missing_audio = await _ensure_missing_scope(client)
-        if not missing_images or not missing_audio:
-            raise DriveError("Missing fallback folder lacks an image+audio pair.")
+        # Missing-level fallback: re-roll a FRESH random image per call (R3) from
+        # the cached missing/ pool. Audio for a missing level is NOT taken from
+        # Drive — the frontend plays a random LOCAL per-theme track instead — so
+        # the missing/ folder only needs images and we never 502 over absent
+        # audio. (Drive audio in missing/, if any, is simply unused.)
+        missing_images, _missing_audio = await _ensure_missing_scope(client)
+        if not missing_images:
+            raise DriveError("Missing fallback folder has no image to show.")
         img = random.choice(missing_images)
-        aud = random.choice(missing_audio)
         return LevelPhotos(
             level=level_id,
             available=False,
             images=[PhotoRef(file_id=img.file_id, name=img.name)],
-            fallback_audio=PhotoRef(file_id=aud.file_id, name=aud.name),
+            fallback_audio=None,
         )
 
 

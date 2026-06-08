@@ -316,6 +316,66 @@ a {
   100% { transform: translate(-8px, -170px) scale(1.08); opacity: 0; }
 }
 
+/* --- Faint static twinkle stars (upper sky band) ------------------------ */
+/* Tiny dots that softly pulse opacity only (no motion) so the night sky in
+   the top margin reads as alive without competing with the hotspot numbers. */
+.theme-horror .horror-twinkle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #e8f0ff;
+  box-shadow: 0 0 4px 1px rgba(220, 235, 255, 0.7);
+  opacity: 0.5;
+  animation: hr-twinkle 6s ease-in-out infinite;
+  will-change: opacity;
+}
+.theme-horror .horror-twinkle--0 { left: 6%;  top: 7%;  animation-duration: 5s;  animation-delay: 0s; }
+.theme-horror .horror-twinkle--1 { left: 18%; top: 4%;  animation-duration: 7s;  animation-delay: 1.5s; }
+.theme-horror .horror-twinkle--2 { left: 34%; top: 6%;  animation-duration: 6s;  animation-delay: 3s; }
+.theme-horror .horror-twinkle--3 { left: 52%; top: 3%;  animation-duration: 8s;  animation-delay: 2s; }
+.theme-horror .horror-twinkle--4 { left: 68%; top: 6%;  animation-duration: 5.5s; animation-delay: 4s; }
+.theme-horror .horror-twinkle--5 { left: 84%; top: 4%;  animation-duration: 7s;  animation-delay: 0.8s; }
+.theme-horror .horror-twinkle--6 { left: 92%; top: 9%;  animation-duration: 6.5s; animation-delay: 2.6s; }
+.theme-horror .horror-twinkle--7 { left: 3%;  top: 12%; animation-duration: 6s;  animation-delay: 5s; }
+
+@keyframes hr-twinkle {
+  0%, 100% { opacity: 0.18; }
+  50%      { opacity: 0.85; }
+}
+
+/* --- Shooting stars (streak diagonally across the upper sky) ------------- */
+/* A bright head with a thin tapering tail (the box-shadow trail), flying down
+   and to the right on long staggered loops; invisible most of the cycle so
+   the streaks feel rare and eerie. transform/opacity only -> GPU-composited. */
+.theme-horror .horror-star {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #ffffff;
+  /* Tapering tail pointing up-left (opposite the travel direction). */
+  box-shadow:
+    0 0 6px 2px rgba(255, 255, 255, 0.9),
+    -12px -12px 2px -1px rgba(205, 238, 230, 0.55),
+    -26px -26px 2px -2px rgba(205, 238, 230, 0.18);
+  opacity: 0;
+  animation: hr-star 14s linear infinite;
+  will-change: transform, opacity;
+}
+.theme-horror .horror-star--0 { left: 8%;  top: 5%;  animation-duration: 13s; animation-delay: 0s; }
+.theme-horror .horror-star--1 { left: 40%; top: 3%;  animation-duration: 17s; animation-delay: 6s; }
+.theme-horror .horror-star--2 { left: 64%; top: 6%;  animation-duration: 15s; animation-delay: 11s; }
+.theme-horror .horror-star--3 { left: 78%; top: 2%;  animation-duration: 19s; animation-delay: 3.5s; }
+
+@keyframes hr-star {
+  0%   { transform: translate(0, 0) scale(0.6); opacity: 0; }
+  4%   { opacity: 0.95; }
+  12%  { transform: translate(160px, 150px) scale(1); opacity: 0.9; }
+  16%  { transform: translate(200px, 188px) scale(0.6); opacity: 0; }
+  100% { transform: translate(200px, 188px) scale(0.6); opacity: 0; }
+}
+
 .theme-horror .horror-map {
   position: relative;
   z-index: 1;                 /* sharp map sits above the blurred fill */
@@ -444,6 +504,237 @@ a {
   transform: scaleX(-1); /* mirror the left hand */
 }
 
+/* =========================================================================
+   M10 — SEA (light) landing MAP: illustrated archipelago + clickable hotspots
+   (SEA ONLY — `.sea-map*` is rendered only in the sea branch of index.html,
+   and EVERY rule below is .theme-sea-scoped so Horror is byte-untouched
+   (NF-SR4). Parallel to the M9b Horror map block above; the leaf hotspot
+   contract (.map-hotspot / .map-hotspot-ring / .map-hotspot-id / .is-sealed)
+   is shared-by-name but styled per-theme — there is NO bare .map-hotspot rule.
+   Art: static/img/light/landing-map.v2.webp, 1399x768 (~1.82:1, wide).)
+   ========================================================================= */
+/* Landing wrapper: fills the viewport and CENTERS the whole map. A blurred,
+   brightened copy of the art fills the letterbox margins (via ::before) in a
+   LIGHT sea/sky wash — NOT Horror's dark storm wash — so the sides read as open
+   sea/sky, never a void. The sharp map is shown complete (no crop, no scroll),
+   keeping the %-positioned hotspots perfectly aligned across aspect ratios. */
+.theme-sea .sea-landing {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.theme-sea .sea-landing::before {
+  content: "";
+  position: absolute;
+  inset: -8%;                 /* bleed past edges so the blur has no hard border */
+  background: url("/static/img/light/landing-map.v2.webp") center / cover no-repeat;
+  /* Brighten + desaturate slightly so the margins read as a soft, hazy
+     extension of the sunlit map (open sky/sea), not a hard frame. */
+  filter: blur(40px) brightness(1.12) saturate(1.1);
+  transform: scale(1.2);
+  z-index: 0;
+}
+/* Soft sky/sand wash over the margins so the sides read as open sea & sky. */
+.theme-sea .sea-landing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 0% 25%, rgba(186, 230, 253, 0.32), transparent 70%),
+    radial-gradient(60% 55% at 100% 80%, rgba(254, 243, 199, 0.28), transparent 70%);
+}
+
+/* --- Sea ambient sky decoration (balloons / gulls / clouds) -------------- */
+/* Lives at z-index:0, pointer-events:none, BEHIND `.sea-map` (z-1), so the
+   islands + hotspots stay fully clickable and the decor reads in the top sky
+   band + side gutters. All transform/opacity-only; frozen under
+   prefers-reduced-motion. Mirrors the Horror `.horror-ambient` approach. */
+.theme-sea .sea-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;                 /* above the blurred fill, behind the map (z-1) */
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Hot-air balloons drift slowly upward + sideways in the sky margins. */
+.theme-sea .sea-balloon {
+  position: absolute;
+  width: clamp(28px, 4vw, 60px);
+  height: auto;
+  opacity: 0;
+  filter: drop-shadow(0 4px 8px rgba(2, 80, 130, 0.25));
+  animation: sea-balloon 46s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+/* Cheerful azure-palette canopy colors (per-instance via custom props). */
+.theme-sea .sea-balloon--0 { left: 5%;  top: 30%; --bln-a: #0284c7; --bln-b: #38bdf8; --bln-c: #0369a1; animation-duration: 46s; animation-delay: 0s; }
+.theme-sea .sea-balloon--1 { right: 6%; top: 22%; --bln-a: #f97316; --bln-b: #fb923c; --bln-c: #ea580c; animation-duration: 54s; animation-delay: 12s; }
+.theme-sea .sea-balloon--2 { left: 2%;  top: 52%; --bln-a: #e11d48; --bln-b: #fb7185; --bln-c: #be123c; animation-duration: 50s; animation-delay: 24s; }
+
+@keyframes sea-balloon {
+  0%   { transform: translate(0, 40px) scale(0.9); opacity: 0; }
+  15%  { opacity: 0.85; }
+  50%  { transform: translate(22px, -60px) scale(1); opacity: 0.9; }
+  85%  { opacity: 0.6; }
+  100% { transform: translate(-10px, -150px) scale(1.05); opacity: 0; }
+}
+
+/* Gull silhouettes glide across the upper sky on staggered loops. */
+.theme-sea .sea-bird {
+  position: absolute;
+  width: clamp(18px, 2.4vw, 36px);
+  height: auto;
+  opacity: 0;
+  animation: sea-bird 30s linear infinite;
+  will-change: transform, opacity;
+}
+.theme-sea .sea-bird--0 { left: -6%; top: 8%;  animation-duration: 28s; animation-delay: 0s; }
+.theme-sea .sea-bird--1 { left: -6%; top: 14%; animation-duration: 34s; animation-delay: 7s; }
+.theme-sea .sea-bird--2 { left: -6%; top: 5%;  animation-duration: 31s; animation-delay: 14s; }
+.theme-sea .sea-bird--3 { left: -6%; top: 18%; animation-duration: 38s; animation-delay: 4s; }
+.theme-sea .sea-bird--4 { left: -6%; top: 11%; animation-duration: 33s; animation-delay: 20s; }
+
+@keyframes sea-bird {
+  0%   { transform: translate(0, 0) scale(0.8); opacity: 0; }
+  10%  { opacity: 0.55; }
+  50%  { transform: translate(56vw, -14px) scale(1); opacity: 0.5; }
+  90%  { opacity: 0.45; }
+  100% { transform: translate(112vw, 8px) scale(0.85); opacity: 0; }
+}
+
+/* Soft drifting cloud puffs in the top sky band. */
+.theme-sea .sea-cloud {
+  position: absolute;
+  width: clamp(70px, 11vw, 150px);
+  height: auto;
+  opacity: 0;
+  filter: blur(1px);
+  animation: sea-cloud 70s linear infinite;
+  will-change: transform, opacity;
+}
+.theme-sea .sea-cloud--0 { left: -14%; top: 4%;  animation-duration: 70s; animation-delay: 0s; }
+.theme-sea .sea-cloud--1 { left: -14%; top: 13%; animation-duration: 88s; animation-delay: 30s; }
+
+@keyframes sea-cloud {
+  0%   { transform: translateX(0); opacity: 0; }
+  12%  { opacity: 0.75; }
+  88%  { opacity: 0.6; }
+  100% { transform: translateX(128vw); opacity: 0; }
+}
+
+.theme-sea .sea-map {
+  position: relative;
+  z-index: 1;                 /* sharp map sits above the blurred fill */
+  margin: 0;
+  line-height: 0;             /* kill descender gap under the <img> */
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
+.theme-sea .sea-map-img {
+  display: block;
+  width: auto;
+  height: auto;
+  /* Fit the WHOLE map within the viewport (no crop) so every island shows and
+     hotspots stay aligned; the blurred ::before fills any letterbox margin.
+     The art is ~1.82:1, so on most screens the letterbox is top/bottom. */
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
+/* Theme toggle floated over the painted pill (top-right) — R-S3: the live
+   control sits directly over the art's painted toggle pill. */
+.theme-sea .sea-map-toggle {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 6;
+}
+
+/* Hotspot layer fills the image; individual hotspots are %-positioned so they
+   track the art at any size. */
+.theme-sea .sea-map-hotspots {
+  position: absolute;
+  inset: 0;
+}
+
+.theme-sea .map-hotspot {
+  position: absolute;
+  width: 6%;                  /* tap target over each island (avoid overlap) */
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);  /* coords are the island CENTER */
+  border-radius: 50%;
+  display: block;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Invisible at rest; a deep-azure ring blooms on hover/keyboard-focus. Colors
+   chosen for WCAG AA contrast over the bright, sunlit art (dark blue ring +
+   white-cored glow read clearly against sky/sand/sea). */
+.theme-sea .map-hotspot-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(2, 132, 199, 0) 60%, transparent 75%);
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0), 0 0 18px 4px rgba(2, 132, 199, 0);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+.theme-sea .map-hotspot:hover .map-hotspot-ring,
+.theme-sea .map-hotspot:focus-visible .map-hotspot-ring {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.5), transparent 70%);
+  box-shadow:
+    0 0 0 3px rgba(3, 78, 121, 0.95),   /* dark navy outline — AA over light art */
+    0 0 24px 7px rgba(2, 132, 199, 0.55);
+}
+.theme-sea .map-hotspot:focus-visible {
+  outline: none;
+}
+
+/* Sunken/absent islands: glow a muted teal-grey (submerged) instead of azure. */
+.theme-sea .map-hotspot.is-sealed:hover .map-hotspot-ring,
+.theme-sea .map-hotspot.is-sealed:focus-visible .map-hotspot-ring {
+  background: radial-gradient(circle, rgba(203, 230, 240, 0.32), transparent 70%);
+  box-shadow:
+    0 0 0 3px rgba(51, 94, 117, 0.9),   /* deep muted teal — AA over light art */
+    0 0 20px 6px rgba(90, 140, 165, 0.45);
+}
+
+/* The numeric id label is only shown in ?calibrate mode (positioning aid).
+   Dark text + white shadow so it reads over the bright art. */
+.theme-sea .map-hotspot-id {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #06283d;
+  text-shadow: 0 0 4px #fff;
+}
+
+/* Calibration overlay twin: outline + number every hotspot so positions can be
+   eyeballed against the art and nudged. Toggled by the ?calibrate query (the JS
+   now selects ".horror-map, .sea-map"). */
+.theme-sea .sea-map.calibrate .map-hotspot {
+  outline: 1px solid rgba(217, 30, 90, 0.9);   /* magenta — high contrast on sea */
+  background: rgba(217, 30, 90, 0.14);
+  border-radius: 4px;
+}
+.theme-sea .sea-map.calibrate .map-hotspot-id {
+  display: flex;
+}
+
 /* ---- Level page: full scene, but guarded so it can't wash the slideshow -- */
 /* R-H6 LOCKED: the per-level page gets the SAME full corridor scene (the navy
    field, glow, fog, figure + claws all apply automatically via the shared
@@ -522,6 +813,35 @@ a {
     animation: none !important;
     transform: none;
     opacity: 0.32;
+  }
+  /* Freeze the twinkle stars to a steady faint dot (no opacity pulse). */
+  .theme-horror .horror-twinkle {
+    animation: none !important;
+    opacity: 0.5;
+  }
+  /* Hide the shooting stars entirely: a "streak" has no meaningful static
+     frame, so freezing it would leave a stray dot mid-sky. */
+  .theme-horror .horror-star {
+    animation: none !important;
+    transform: none;
+    opacity: 0;
+  }
+  /* Freeze the Sea ambient decor to a steady static frame (still visible, no
+     drift/glide). Scoped to .theme-sea so Horror is untouched (NF-SR4). */
+  .theme-sea .sea-balloon {
+    animation: none !important;
+    transform: none;
+    opacity: 0.85;
+  }
+  .theme-sea .sea-bird {
+    animation: none !important;
+    transform: none;
+    opacity: 0.5;
+  }
+  .theme-sea .sea-cloud {
+    animation: none !important;
+    transform: none;
+    opacity: 0.6;
   }
 }
 
@@ -621,6 +941,91 @@ a {
      contribution and keeps paint cost low. */
   .theme-horror .horror-ghost {
     width: clamp(20px, 8vw, 34px);
+  }
+}
+
+/* =========================================================================
+   M10 MOBILE — Sea landing map on small / touch screens (SEA ONLY)
+   -------------------------------------------------------------------------
+   PROBLEM: the Sea art is WIDER (~1.82:1, 1399x768) than the Horror map
+   (~1.25:1). On a narrow portrait phone, fitting the WHOLE map to the viewport
+   makes it even tinier than Horror's and the 6% hotspots collapse far below the
+   ~44px touch floor, with large empty letterbox bands.
+
+   STRATEGY (scoped to .theme-sea, mobile breakpoints only; desktop above is
+   untouched): mirror the proven Horror pan-to-fit model — render the map LARGER
+   THAN the viewport and turn `.sea-landing` into a 2-axis scroll/pan container.
+   Hotspots stay %-positioned over the image, so enlarging the image enlarges
+   both the hotspots and their spacing while alignment is preserved (still a % of
+   the same box). The wider aspect ratio means a longer vertical pan than Horror
+   (R-S8); the start corner shows islands 0-4 first.
+
+   Two tiers, sized so the hotspot tap target clears ~44px (WCAG 2.5.5/2.5.8):
+     <=768px : img width 130vw
+     <=480px : img width 175vw, hotspot widened to 7%
+   ========================================================================= */
+@media (max-width: 768px) {
+  /* Turn the landing into a pannable scroll surface pinned to the viewport so
+     the *page* never gains scrollbars; all panning happens within this box. */
+  .theme-sea .sea-landing {
+    position: fixed;
+    inset: 0;
+    min-height: 0;            /* override desktop min-height:100vh */
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-x pan-y;
+    /* Start from the top-left corner so islands 0-4 are in view first; the user
+       pans down/right to reach the lower-id islands (R-S8). */
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  /* Pin the blurred fill + sky/sand wash + ambient decor to the viewport
+     (fixed) so they cover the visible frame at any scroll position and add
+     nothing to the scrollable area (mirrors the Horror ambient pinning). */
+  .theme-sea .sea-landing::before,
+  .theme-sea .sea-landing::after,
+  .theme-sea .sea-ambient {
+    position: fixed;
+  }
+
+  /* Enlarge the map beyond the viewport so islands are big enough to tap. */
+  .theme-sea .sea-map {
+    max-width: none;
+    max-height: none;
+    flex: 0 0 auto;           /* don't let flex shrink it back down */
+  }
+  .theme-sea .sea-map-img {
+    width: 130vw;             /* > viewport width => map is comfortably large */
+    max-width: none;          /* defeat the desktop max-width:100vw cap */
+    max-height: none;         /* defeat the desktop max-height:100vh cap */
+    height: auto;             /* keep the natural ~1.82:1 aspect (no distortion) */
+  }
+
+  /* Keep the toggle reachable while panning: pin it to the viewport corner
+     (not the scrolling map) and shrink it a touch. */
+  .theme-sea .sea-map-toggle {
+    position: fixed;
+    top: 0.6rem;
+    right: 0.6rem;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Tighter phones: enlarge further and widen the hotspot to 7% as extra
+     touch-target insurance (still no overlap between adjacent islands). */
+  .theme-sea .sea-map-img {
+    width: 175vw;
+  }
+  .theme-sea .map-hotspot {
+    width: 7%;                /* ~44px tap target at the 480px map size */
+  }
+  .theme-sea .sea-map-toggle {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.6rem;
   }
 }
 

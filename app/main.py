@@ -96,6 +96,25 @@ def _levels_payload() -> list[dict]:
     ]
 
 
+def _local_audio_ids(theme: str) -> list[int]:
+    """Level ids with a local per-theme track in ``static/audio/{theme}/``.
+
+    Pool for a MISSING level's fallback music: missing levels have no per-level
+    track of their own, so the frontend plays a random track from this
+    theme-appropriate set. ``theme`` is already validated by :func:`read_theme`,
+    so the path cannot escape the audio dir.
+    """
+    audio_dir = STATIC_DIR / "audio" / theme
+    ids: list[int] = []
+    if audio_dir.is_dir():
+        for p in audio_dir.glob("level_*.mp3"):
+            try:
+                ids.append(int(p.stem.split("_", 1)[1]))
+            except (IndexError, ValueError):
+                continue
+    return sorted(ids)
+
+
 # --- SSR routes ------------------------------------------------------------
 @app.get("/")
 def index(request: Request):
@@ -121,6 +140,7 @@ def level_page(request: Request, level_id: int):
             "theme": theme,
             "level_id": level_id,
             "available": available,
+            "audio_track_ids": _local_audio_ids(theme),
         },
     )
 

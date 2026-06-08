@@ -1,6 +1,6 @@
 # Requirements — Archive 19: Dual-Atmosphere Dynamic Gallery
 
-Status: **Discovery COMPLETE — design approved, asset reality confirmed (§7).** Supersedes the original single-theme blueprint. Build proceeds with placeholders (§8). **Active change request: Horror Atmosphere Redesign — see §9 (visual-only restyle of the Horror theme; Sea untouched).**
+Status: **Discovery COMPLETE — design approved, asset reality confirmed (§7).** Supersedes the original single-theme blueprint. Build proceeds with placeholders (§8). **M10 — Sea (Light) landing map: BUILT, SECURITY-APPROVED, QA-VERIFIED (140 passed) — pending commit; see §10 (frontend-only; replaced the Sea island grid with a full-bleed archipelago map + hotspots; Horror untouched). Prior: Horror Atmosphere Redesign §9 (M9, shipped). After M9+M10, both themes are map-based.**
 
 ## 1. Vision
 An interactive web app with a **variable** number of levels (0 → up to 18) presented through **two distinct, toggleable realities**. The chosen theme persists across the whole session and is switchable from any page.
@@ -16,7 +16,7 @@ An interactive web app with a **variable** number of levels (0 → up to 18) pre
 ## 3. Functional requirements
 | # | Requirement | Priority |
 |---|---|---|
-| F1 | Render a dynamically-sized level grid from whatever levels are configured (5, 12, 19…). | Must |
+| F1 | Both themes render a fixed illustrated **landing map** of 19 %-positioned clickable hotspots (Horror = haunted map §9, Sea = archipelago map §10). Dynamic discovery (whatever levels are configured: 5, 12, 19…) drives each hotspot's **availability/sealed styling**, not the layout. *(History: the original landing was a dynamically-sized grid; both themes were converted to fixed maps in M9/M10 — see §9/§10.)* | Must |
 | F2 | Global theme toggle reachable on **every** page view. | Must |
 | F3 | Theme selection persists for the session (cookie + `sessionStorage` — see D1). | Must |
 | F4 | Clicking a level navigates to a dedicated **`/level/{id}`** page (`level.html`). | Must |
@@ -24,9 +24,9 @@ An interactive web app with a **variable** number of levels (0 → up to 18) pre
 | F6 | Landing page plays the theme's **global ambient** track. | Must |
 | F7 | Entering a level **crossfades**: wind down global ambient, scale up that level's track. | Must |
 | F8 | Images per level fetched from numbered Google Drive subfolders, proxied as bytes (D2). | Must |
-| F9 | **Missing-level fallback:** if a numbered folder is absent, pull 1 random **image** AND 1 random **audio** from the Drive `missing/` folder (which holds stock images + stock audio), both proxied through the backend. | Must |
+| F9 | **Missing-level fallback:** if a numbered folder is absent (or present-but-empty), pull 1 random **image** from the Drive `missing/` folder (proxied through the backend). The fallback **audio** is a random **local per-theme track** from `static/audio/{theme}/` chosen client-side — NOT from Drive — so the `missing/` folder only needs images and a missing level never fails over absent audio. *(History: originally the audio also came from the Drive `missing/` folder; changed 2026-06-09 — see §11.)* | Must |
 | F10 | Browser never receives the Google Drive API key. | Must |
-| F11 | Responsive layout for both theme grids (corridor / archipelago). | Should |
+| F11 | Responsive layout for both theme landing maps (haunted / archipelago) — scale-to-fit on desktop, pan-to-fit on mobile (§9/§10). | Should |
 
 ## 4. Non-functional
 - **Frontend:** Semantic HTML5, Tailwind CDN + custom `style.css` (`.theme-horror` / `.theme-sea` utility classes), native `<audio>`.
@@ -40,13 +40,13 @@ An interactive web app with a **variable** number of levels (0 → up to 18) pre
 - **D3 — Default theme:** ✅ **Horror** for first-time visitors with no saved choice.
 - **D4 — Level model:** ✅ **Dedicated page per level** at `/level/{id}` (`level.html`).
 - **D5 — Level set:** ✅ All 19 (0–18), numbered Drive folders; dynamic scaling so missing numbers are allowed.
-- **D6 — Missing handling:** ✅ Absent numbered folder → random **image + audio** both from the Drive `missing/` folder (it holds stock images and stock audio), proxied through the backend.
+- **D6 — Missing handling:** ✅ Absent numbered folder → random **image** from the Drive `missing/` folder, proxied through the backend. *(Superseded 2026-06-09 — §11: the fallback **audio** is now a random LOCAL per-theme track, not from Drive.)*
 - **D7 — Level metadata:** ✅ Number only (no titles/descriptions).
 - **D8 — Access:** ✅ Public, no auth.
-- **D9 — Asset split:** ✅ **Images in Google Drive; normal per-level audio in the GitHub repo** (`static/audio/`). Exception: the **missing-level fallback** image AND audio both come from the Drive `missing/` folder.
+- **D9 — Asset split:** ✅ **Images in Google Drive; all audio in the GitHub repo** (`static/audio/`). The **missing-level fallback** image comes from the Drive `missing/` folder; its audio is a random LOCAL per-theme track *(updated 2026-06-09 — §11; was previously Drive `missing/` audio)*.
 - **D12 — Drive access:** ✅ The `all ages` parent folder is shared **"Anyone with the link → Viewer"**, so the plain `GD_API_KEY` can read it. No service account needed.
 - **D10 — Drive config:** ✅ A single **parent** Drive folder (one link/ID in `GD_ROOT_FOLDER`) whose children are the numbered subfolders `0..18` + `missing/`. Backend lists the parent's children to discover which levels exist → dynamic scaling.
-- **D11 — Per-theme level tracks:** ✅ Horror and Sea each have their **own** per-level tracks (`static/audio/horror/`, `static/audio/sea/`). The missing-level fallback audio is NOT local — it comes from the Drive `missing/` folder per D6/D9.
+- **D11 — Per-theme level tracks:** ✅ Horror and Sea each have their **own** per-level tracks (`static/audio/horror/`, `static/audio/sea/`). The missing-level fallback audio is a random track drawn from the **active theme's** local set *(updated 2026-06-09 — §11; previously it came from the Drive `missing/` folder)*.
 
 ## 6. Configuration variables
 - `GD_API_KEY` — **secret**, never committed; read via `os.environ`.
@@ -107,3 +107,80 @@ A dark haunted corridor at night with:
 
 ### 9.5 Out of scope (explicit)
 - Sea & Island theme (any file path serving it), backend/`drive_service.py`/`main.py`, routes, payload schemas, audio engine, Drive/missing-fallback logic, deployment config. None change.
+
+---
+
+## 10. M10 — Sea (Light) landing map (change request — 2026-06-09)
+
+Status: **BUILT — SECURITY-APPROVED (S6) + QA-VERIFIED (S7, full suite 140 passed / 0 failed); pending commit (PM S8, doc sync done).** Design approved (ARCHITECTURE §9), all open questions resolved via user sign-off (2026-06-09). Scope was a **frontend-only redesign of the SEA & ISLAND (light) theme landing**, mirroring M9's Horror treatment: the dynamic island GRID was replaced with a full-bleed illustrated **archipelago map** (`static/img/light/landing-map.v2.webp`, 214 KB WebP, under the ≤400 KB budget; `landing-map.png` retained as design source only) whose 19 numbered island locations are %-positioned clickable hotspots → `/level/{id}`. **The HORROR theme stayed byte-for-byte unchanged.** No backend, route, payload, audio, data-flow, or deploy changes. All locked decisions D1–D12, risk resolutions R1–R6, and the shipped M9 design are preserved. After M10, **both themes are map-based** (Horror map untouched; Sea grid superseded by its own map).
+
+> **SR1 firmed (architect default, §9.5):** "replaces the dynamic island grid" is now read **literally** — the Sea grid markup is **deleted**, with **no mobile grid fallback** (pan-to-fit is used on mobile instead). This closes R-S6. **Confirmed by user sign-off (2026-06-09): no mobile grid fallback.**
+
+### 10.1 Intent (verbatim user request)
+"Similar to dark mode (Horror), we need a detailed design for **light mode** as well. Refer to the image at `static/img/light/landing-map.png`." → Give the Sea & Island (light) theme the **same full-bleed illustrated map + clickable hotspots** treatment M9 gave Horror, using the supplied archipelago art.
+
+### 10.2 Reference art (`static/img/light/landing-map.png`)
+An illustrated fantasy **archipelago** titled "TOUR-DE-ANSHIKA": sunlit sky, **19 numbered island locations** connected by bridges, each with a painted NAME — `0 RUIN · 1 GATE · 2 WITCH'S HUT · 3 MAUSOLEUM · 4 ECHOED ABYSS · 5 PRISON · 6 GRAVEYARD · 7 HALLO · 8 SUNKEN TEMPLE · 9 FORBIDDEN · 10 CAVERN · 11 SEPULCHER · 12 WATCH TOWER · 13 PIT · 14 FINAL KEEP · 15 HAUNTED TOWER · 16 CURSED ORCHARD · 17 DRAGON'S DEW · 18 FORGOTTEN MEMORY`. A theme-toggle pill is **painted into the art top-right** (decorative; the real interactive overlay toggle sits on top of it). The island layout differs from the Horror map, so hotspot coords must be calibrated against THIS art. **Byte note:** the file is a **2.7 MB PNG**; the Horror map shipped as a **640 KB JPG** — image optimization is an Open Question (SQ2).
+
+### 10.3 Functional requirements
+
+| # | Requirement | Priority |
+|---|---|---|
+| SR1 | Sea **landing** (`index.html`, the `{% else %}` / Sea branch) renders a full-bleed illustrated **archipelago map** that **replaces** the dynamic island grid for the Sea theme. The Horror map branch is untouched. After this change both themes are map-based. | Must |
+| SR2 | The art is delivered as a single full-bleed `<img>` (analog of `.horror-map-img`) inside a Sea map container, filling the viewport like the Horror map. | Must |
+| SR3 | **All 19 locations (0–18)** are rendered as %-positioned clickable hotspot anchors → `/level/{id}`, regardless of discovery (the grid of hotspots is hardcoded, mirroring Horror). | Must |
+| SR4 | Hotspot **coordinates are calibrated against THIS art** (the archipelago island layout, NOT the Horror map's `coords`) using the existing `?calibrate` aid. | Must |
+| SR5 | Unavailable levels (id ∉ discovered `available_ids`) receive **"sealed/sunken"** styling, mirroring Horror's `.is-sealed` (Sea-appropriate visual, e.g. submerged/dimmed island). Hotspot still navigates to `/level/{id}` (which serves the missing fallback). | Must |
+| SR6 | The **global theme toggle** is present and overlaid on the map (present on every page, per F2), positioned to **not clash with the painted toggle pill** in the art's top-right. | Must |
+| SR7 | Hotspots are **keyboard-focusable** with descriptive `aria-label`s; the painted location NAMES SHOULD be exposed where decided (see SQ3, e.g. `aria-label="Level 5 — Prison"`). Decorative layers (map art, any ambient decoration, painted-pill region) are `aria-hidden` + `pointer-events:none`. | Must |
+| SR8 | A landing heading remains available to assistive tech (`sr-only` `<h1>`, mirroring the Horror landing). | Must |
+| SR9 | Optional Sea ambient decoration (drifting boats/gulls/clouds, analog of the Horror drifting ghosts) — a **decision** (SQ4); if included it MUST be inert/`aria-hidden` and disabled under `prefers-reduced-motion`. | Could |
+
+### 10.4 Non-functional requirements
+- **NF-SR1 — Image byte budget / performance.** The supplied **2.7 MB PNG must be optimized** before ship. Target ≤ **300–600 KB** via WebP or progressive JPEG (PNG only retained if it can hit budget, which is unlikely for a photographic illustration). Use `fetchpriority="high"` + `decoding="async"` on the map `<img>` (mirroring Horror). Must not regress the existing caching/idle-prefetch path (prefetch logic unchanged). Image must not block the landing ambient audio start.
+- **NF-SR2 — Accessibility.** Hotspots keyboard-focusable in DOM order with visible focus state and `aria-label`s (SR7). Decorative layers `aria-hidden` + `pointer-events:none`. `prefers-reduced-motion` honored for any ambient motion (reuse the existing global block at `style.css`). Maintain WCAG AA contrast for hotspot rings/ids/focus indicators against the bright sunlit art.
+- **NF-SR3 — Responsiveness.** The art is **wide/landscape**; the map must read correctly mobile → desktop without focal-point loss. Small-screen behavior (scroll/pan vs scale-to-fit vs grid fallback under a breakpoint) is an **Open Question (SQ5)**.
+- **NF-SR4 — Theme isolation (hard gate).** The **Horror landing must be byte-unchanged** (`static/img/horror/landing-map.v2.jpg`, `.horror-*` CSS, the Horror template branch, its `coords`). If shared map machinery is introduced (SQ1), it MUST NOT regress Horror visuals/behavior. No edits to shared `:root` neutrals that would bleed across themes.
+- **NF-SR5 — Layout/functionality preservation.** No change to routes, `/level/{id}` navigation, the slideshow, audio crossfade engine, prefetch, payloads, or backend. Diff restricted to the Sea branch of `index.html`, Sea-scoped (or shared, per SQ1) CSS in `static/style.css`, and the optimized image asset under `static/img/light/`.
+- **NF-SR6 — Maintainability.** Reuse the established Horror map patterns (map container + `<img>` + `%`-positioned hotspot anchors + `?calibrate` aid) so both themes share a consistent mental model. Document the class strategy chosen (SQ1) and the image asset's source/license + optimization origin.
+
+### 10.5 Open questions (SQ — RESOLVED in ARCHITECTURE §9; LOCKED status below)
+| # | Question | Resolution (ARCHITECTURE §9.8) |
+|---|---|---|
+| SQ1 | **Class strategy:** refactor the Horror map machinery into a **shared, theme-neutral component** (e.g. `.theme-map` / `.map-hotspot` reused by both themes) vs **duplicate Sea-scoped classes** (`.sea-map` / `.sea-map-img` …)? Tension: DRY vs the "Sea untouched / theme-isolated" / "Horror byte-unchanged" principle (NF-SR4). `.map-hotspot` is **already shared** in the Horror markup. | **LOCKED (architect, §9.2):** reuse the already-shared `.map-hotspot`/`.map-hotspot-ring`/`.map-hotspot-id`/`.is-sealed` **leaf** classes for both themes; add Sea-scoped **container** classes (`.sea-landing`/`.sea-map`/`.sea-map-img`/`.sea-map-hotspots`/`.sea-map-toggle`) under `.theme-sea`. **NO shared Jinja macro, NO Horror rename** (protects NF-SR4). No user input needed unless they want full DRY (reopens R-S1). |
+| SQ2 | **Image format/budget:** optimize the 2.7 MB PNG to **WebP** or **progressive JPEG**? Target size (≤300–600 KB)? Keep PNG only if it meets budget? | **LOCKED (architect, §9.4):** ship single **WebP** `static/img/light/landing-map.v2.webp`, q≈80, ~1600px wide, **≤400 KB** (hard ceiling 600 KB). The 2.7 MB PNG must **not** ship as-is. Progressive JPEG is the only-if-needed alternative. No user input needed. |
+| SQ3 | **Hotspot labels:** expose the painted location NAMES (Prison, Graveyard…) in hotspot UI and/or `aria-label` (e.g. "Level 5 — Prison"), or numbers-only like Horror? If names: a single source-of-truth name map is needed (template dict). | **LOCKED-with-default (architect, §9.3):** names in **`aria-label` only** ("Level 5 — Prison") via an inline `sea_names` dict; visible UI stays **numbers-only**. **RESOLVED (user sign-off 2026-06-09):** expose the location names in `aria-label` ("Level 5 — Prison"); visible UI stays numbers-only. |
+| SQ4 | **Ambient decoration:** add a Sea analog of the drifting ghosts (drifting boats / gulls / clouds), or keep it clean? | **LOCKED (architect, §9.6):** **OFF by default**; a `.sea-ambient` hook is documented for a later trivial add (zero contract change). No user input needed. |
+| SQ5 | **Small-screen / responsive:** how should the wide landscape map behave on mobile — horizontal scroll/pan, scale-to-fit (letterbox), or **fall back to the existing island grid** under a breakpoint (which would mean NOT deleting the grid markup)? | **LOCKED (architect, §9.5):** scale-to-fit + letterbox on desktop, **pan-to-fit** on mobile (mirrors Horror); **NO grid fallback** → SR1 "replaces" stays literal, R-S6 closed. **RESOLVED (user sign-off 2026-06-09): no mobile grid fallback** — map scales/pans to fit on all sizes; Sea grid markup deleted. |
+| SQ6 | **Naming/theme mismatch:** the "light/Sea" art locations carry **eerie** names (Graveyard, Mausoleum, Dragon's Dew, Haunted Tower). Confirm this art is intended for the **Sea (light)** theme as-is, and that the Sea theme keeps its sunlit azure palette/copy ("Enter the Corridor"/🌙) despite the macabre island names. | **RESOLVED (user sign-off 2026-06-09):** (a) use the art for the **Sea & Island (light)** theme **as-is**; (b) Sea keeps its **sunlit azure palette** + "Enter the Corridor"/🌙 copy; (c) location names **exposed in `aria-label`** (visible UI numbers-only). This is the Sea & Island theme — the painted location names are treated as island names, not a horror restyle. |
+
+### 10.6 Risks (R-S — expanded + status from ARCHITECTURE §9.9)
+| # | Risk | Status / mitigation |
+|---|---|---|
+| R-S1 | **Horror regression** from shared-class refactor (SQ1) — touching `.map-hotspot`/map machinery could alter the Horror landing. | **MITIGATED (severity → low):** §9.2 decision touches no `.horror-*` rule, no Horror markup, no `coords` dict, introduces no shared macro. Residual: the one-line calibrate-JS selector change — QA confirms Horror `?calibrate` still highlights `.horror-map` (S-QA). |
+| R-S2 | **Byte budget blown** — shipping the raw 2.7 MB PNG regresses load/perf (NF-SR1). | **OPEN until verified:** mandatory §9.4 optimization (≤400 KB WebP); the raw 2.7 MB PNG is never shipped. Security (S6) + QA (S7) verify the committed asset size. |
+| R-S3 | **Toggle clash** — the real overlay toggle overlapping the painted toggle pill looks broken/duplicated (SR6). | **Mitigated (visual eyeball needed):** place the real `.sea-map-toggle` top-right (`position:absolute; top:1rem; right:1rem; z-index:6`) directly over the painted pill so it reads as "the pill is the button"; copy/icon 🌙 "Enter the Corridor". Verify at S5/S7. |
+| R-S4 | **Coord drift** — reusing Horror `coords` would mis-place hotspots on the different archipelago layout (SR4). | **CLOSED:** distinct `sea_coords` dict (§9.3) measured against THIS art + calibrate aid now reaches `.sea-map`. S3/S7 fine-tune. |
+| R-S5 | **Mobile usability** — wide landscape map unusable/illegible on portrait phones (NF-SR3). | **Addressed:** pan-to-fit model (§9.5) proven on Horror; wider Sea ratio = longer vertical pan. QA mobile pass (S7) confirms all 19 islands reachable, hotspots clear ~44px. |
+| R-S6 | **Grid removal vs fallback conflict** — if SQ5 chooses a grid fallback, SR1's "replaces the grid" must be softened to "replaces above breakpoint." | **CLOSED under the locked default (§9.5: no grid fallback)** — SR1 stays literal, grid markup deleted. **Closed for good (user sign-off 2026-06-09): no grid fallback.** |
+| R-S7 | **(NEW) Painted toggle pill baked into the optimized image** — the pill is part of the art, so it ships in the WebP; a later branding change to the toggle can't edit the painted pill without re-exporting the art. | **Low severity (maintainability, NF-SR6):** document the art source so a re-export is possible. |
+| R-S8 | **(NEW) Landscape pan range buries low-id islands on mobile** — the ~16:9 art panned at 130–175vw pushes bottom-row islands (12/15/17) far down-scroll; some may be hard to reach. | **Low severity:** start corner shows 0–4; QA (S7) confirms **all 19 hotspots reachable on mobile** and considers a subtle "pan to explore" affordance. |
+
+### 10.7 Out of scope (explicit)
+- Horror theme (`static/img/horror/landing-map.v2.jpg`, `.horror-*` styles, the Horror template branch + its `coords`), backend / `drive_service.py` / `main.py`, routes, payload schemas, audio engine, Drive / missing-fallback logic, deployment config. None change.
+
+---
+
+## 11. Missing-level fallback audio → local per-theme track (bug fix — 2026-06-09)
+
+**Trigger:** with a real Drive configured, every missing level (0, 3–7) returned **502 "Upstream Drive error."** Root cause: the Drive `missing/` folder holds only **images** (no audio), but the fallback required an image **AND** an audio file (original F9 / D6 / D9 / D11) and raised when audio was absent.
+
+**Decision (user):** for a missing level, play **a random LOCAL track for the active theme** (`static/audio/{theme}/level_*.mp3`) instead of Drive audio. The `missing/` folder is now images-only.
+
+**As-built behavior:**
+- `drive_service.get_level_photos` (missing path) returns 1 random image from `missing/` and `fallback_audio = None`; it raises only if there is **no image** (never over absent audio).
+- `main.py /level/{id}` passes `audio_track_ids` (the ids with a local `static/audio/{theme}/level_*.mp3`, theme validated by `read_theme`, so no path traversal) to `level.html`.
+- `level.html` audio logic: available level → its own `level_{id}.mp3`; **missing level → a random id from `audio_track_ids`** for the active theme; otherwise ambient only.
+- `/api/levels/{id}/photos` payload for a missing level: `available:false`, one proxied image, `fallback_audio:null`.
+
+**Scope:** `app/drive_service.py`, `app/main.py`, `templates/level.html`, + the affected `tests/test_backend.py` / `tests/test_cache.py`. No route/signature change; `fallback_audio` stays in the payload (now always `null` for missing levels). Full suite **140 passed**.

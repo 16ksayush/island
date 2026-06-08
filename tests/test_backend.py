@@ -86,47 +86,41 @@ def test_missing_folder_not_treated_as_level(client):
 # ===========================================================================
 # 3. Missing fallback (R3)
 # ===========================================================================
-def test_missing_level_photos_returns_proxied_image_and_audio(client):
+def test_missing_level_photos_returns_proxied_image(client):
     resp = client.get("/api/levels/3/photos")  # absent numbered folder
     assert resp.status_code == 200
     body = resp.json()
     assert body["level"] == 3
     assert body["available"] is False
     assert len(body["images"]) == 1
-    assert body["fallback_audio"] is not None
+    # Audio for a missing level is NOT taken from Drive — the frontend plays a
+    # random LOCAL per-theme track instead — so the payload carries no audio.
+    assert body["fallback_audio"] is None
     img = body["images"][0]
-    aud = body["fallback_audio"]
     # Image is drawn from the mocked missing/ image set.
     assert img["file_id"] in {fake.MISS_IMG_A, fake.MISS_IMG_B}
-    # Audio is drawn from the mocked missing/ audio set.
-    assert aud["file_id"] in {fake.MISS_AUD_A, fake.MISS_AUD_B}
-    # URLs are proxied through our media endpoint, never bare Drive URLs.
+    # URL is proxied through our media endpoint, never a bare Drive URL.
     assert img["url"] == f"/api/levels/3/media/{img['file_id']}"
-    assert aud["url"] == f"/api/levels/3/media/{aud['file_id']}"
     assert "googleapis" not in resp.text
     assert "drive.google" not in resp.text
 
 
 def test_missing_fallback_uses_random_selection_and_may_vary(client, monkeypatch):
-    """R3: re-rolled each call. Always a valid member of the missing set; the
-    selection MAY vary. We prove (a) validity over many calls and (b) the code
-    path uses random.choice by forcing it to observe variation deterministically.
+    """R3: the missing-level IMAGE is re-rolled each call — always a valid member
+    of the missing set, and the selection MAY vary. Audio is no longer part of
+    the payload (it is a local per-theme track chosen client-side).
     """
     img_set = {fake.MISS_IMG_A, fake.MISS_IMG_B}
-    aud_set = {fake.MISS_AUD_A, fake.MISS_AUD_B}
-    seen_imgs, seen_auds = set(), set()
+    seen_imgs = set()
     for _ in range(40):
         body = client.get("/api/levels/4/photos").json()
         i = body["images"][0]["file_id"]
-        a = body["fallback_audio"]["file_id"]
         assert i in img_set, i
-        assert a in aud_set, a
+        assert body["fallback_audio"] is None
         seen_imgs.add(i)
-        seen_auds.add(a)
     # Over 40 re-rolls across a 2-element set, both members should appear
     # (probability of not seeing variation is 2 * 2**-40 — effectively zero).
     assert seen_imgs == img_set, seen_imgs
-    assert seen_auds == aud_set, seen_auds
 
 
 def test_missing_fallback_path_calls_random_choice(client, monkeypatch):
@@ -140,8 +134,8 @@ def test_missing_fallback_path_calls_random_choice(client, monkeypatch):
 
     monkeypatch.setattr(drive_service.random, "choice", spy)
     client.get("/api/levels/5/photos")
-    # One choice for the image + one for the audio.
-    assert calls["n"] == 2
+    # One choice for the image (audio is no longer drawn from Drive).
+    assert calls["n"] == 1
 
 
 # ===========================================================================
@@ -156,7 +150,7 @@ def test_empty_present_folder_falls_through_to_missing(client):
     assert body["available"] is False  # R5: treated as not-yet-stocked
     assert len(body["images"]) == 1
     assert body["images"][0]["file_id"] in {fake.MISS_IMG_A, fake.MISS_IMG_B}
-    assert body["fallback_audio"]["file_id"] in {fake.MISS_AUD_A, fake.MISS_AUD_B}
+    assert body["fallback_audio"] is None
 
 
 def test_present_nonempty_folder_returns_its_own_images(client):

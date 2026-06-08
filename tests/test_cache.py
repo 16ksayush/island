@@ -180,16 +180,19 @@ def test_media_response_has_cache_headers(client, patched_media):
 # 5. R3 still re-rolls for a missing level despite the missing/ LIST cache
 # ===========================================================================
 def test_missing_list_cached_but_choice_rerolled(counting_client, counting_drive):
-    """Only the missing/ LIST is cached; the random pick still varies (R3)."""
+    """Only the missing/ LIST is cached; the random IMAGE pick still varies (R3).
+
+    (Missing-level audio is no longer drawn from Drive — it is a local per-theme
+    track chosen client-side — so only the image is re-rolled here.)
+    """
     client = counting_client
-    seen_imgs, seen_auds = set(), set()
+    seen_imgs = set()
     for _ in range(40):
         body = client.get("/api/levels/4/photos").json()
         seen_imgs.add(body["images"][0]["file_id"])
-        seen_auds.add(body["fallback_audio"]["file_id"])
-    # Both members of each 2-element pool appear -> the choice is re-rolled.
+        assert body["fallback_audio"] is None
+    # Both members of the 2-element image pool appear -> the choice is re-rolled.
     assert seen_imgs == {fake.MISS_IMG_A, fake.MISS_IMG_B}, seen_imgs
-    assert seen_auds == {fake.MISS_AUD_A, fake.MISS_AUD_B}, seen_auds
     # ...yet the missing/ folder was listed only ONCE across all 40 calls
     # (prefetched at discovery; never re-listed), proving the LIST is cached.
     assert counting_drive["by_folder"].get(fake.MISSING_ID, 0) <= 1, (

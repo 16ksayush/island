@@ -7,7 +7,8 @@ is hermetic and offline.
 
 Covers the 6 required areas:
   1. SSR theme class per cookie (D1/D3) — asserted against rendered HTML.
-  2. Dynamic grid (F1) — one tile per discovered level; available vs Lost.
+  2. Dynamic landing nav (F1) — one map hotspot per level; available vs sealed
+     (door/island GRID retired by the M9/M10 map redesign).
   3. Level page render (F4/F5) — available + missing both 200; wires photos fetch.
   4. Theme toggle present on every page (F2).
   5. No Drive/secret leakage in rendered HTML (defense-in-depth).
@@ -74,63 +75,69 @@ def test_level_page_theme_class_honors_cookie(client):
 
 
 # ===========================================================================
-# 2. Dynamic grid (F1) — one tile per discovered level; available vs Lost
+# 2. Dynamic landing navigation (F1) — superseded by the M9/M10 map redesign.
+#    The door/island GRID (`.level-tile` + `badge-unavailable`) was deliberately
+#    removed from BOTH themes (M9 Horror, M10 Sea), replaced by a full-bleed
+#    illustrated map of 19 %-positioned `.map-hotspot` anchors -> /level/{id}.
+#    These tests now assert the SAME invariants against the Horror map markup;
+#    the Sea-arm equivalents live in tests/test_sea_landing.py.
 # ===========================================================================
-def _tile_hrefs(html: str) -> list[str]:
-    """Every level tile is an <a class="level-tile ..." href="/level/{id}">."""
-    return re.findall(r'class="level-tile[^"]*"\s+href="(/level/\d+)"', html)
+def _hotspot_hrefs(html: str) -> list[str]:
+    """Every navigation entry is an <a class="map-hotspot ..." href="/level/{id}">."""
+    return re.findall(r'<a\s+class="map-hotspot[^"]*"\s+href="(/level/\d+)"', html)
 
 
 def test_grid_renders_exactly_one_tile_per_reported_level(client):
-    api = client.get("/api/levels").json()["levels"]
-    expected_ids = [lvl["id"] for lvl in api]
+    # Superseded by the map redesign (M9/M10): the landing now exposes exactly
+    # one hotspot per level id 0..18 (all 19), regardless of discovery span.
+    # Invariant preserved: one navigation entry per level, no dupes, no extras.
+    html = client.get("/").text  # no cookie -> horror map
+    hrefs = _hotspot_hrefs(html)
+    rendered_ids = sorted(int(h.rsplit("/", 1)[-1]) for h in hrefs)
 
-    html = client.get("/").text
-    hrefs = _tile_hrefs(html)
-    rendered_ids = [int(h.rsplit("/", 1)[-1]) for h in hrefs]
-
-    # Exactly one tile per backend-reported level, same set, same count.
-    assert len(rendered_ids) == len(expected_ids), (rendered_ids, expected_ids)
-    assert sorted(rendered_ids) == sorted(expected_ids)
-    # Mocked tree: span 0..8 inclusive (9 tiles).
-    assert rendered_ids == list(range(0, 9))
+    assert len(hrefs) == 19, (len(hrefs), rendered_ids)
+    assert rendered_ids == list(range(0, 19))
 
 
 def test_grid_distinguishes_available_from_unavailable(client):
+    # Superseded by the map redesign (M9/M10): availability is now conveyed by
+    # the `is-sealed` hotspot modifier + a "(sealed — fallback content)" label
+    # suffix instead of the old `is-unavailable` tile + "Lost" badge.
     api = {lvl["id"]: lvl["available"] for lvl in client.get("/api/levels").json()["levels"]}
-    html = client.get("/").text
+    html = client.get("/").text  # horror map
 
-    for level_id, available in api.items():
-        # Each tile carries its own <a ... href="/level/{id}"> block.
+    for level_id in range(0, 19):
+        available = api.get(level_id, False)
         pattern = re.compile(
-            r'<a\s+class="(level-tile[^"]*)"\s+href="/level/%d"' % level_id
+            r'<a\s+class="(map-hotspot[^"]*)"\s+href="/level/%d"' % level_id
         )
         m = pattern.search(html)
-        assert m, f"no tile rendered for level {level_id}"
+        assert m, f"no hotspot rendered for level {level_id}"
         cls = m.group(1)
         if available:
-            assert "is-unavailable" not in cls, f"level {level_id} wrongly marked unavailable"
+            assert "is-sealed" not in cls, f"level {level_id} wrongly marked sealed"
         else:
-            assert "is-unavailable" in cls, f"level {level_id} should be marked unavailable"
+            assert "is-sealed" in cls, f"level {level_id} should be marked sealed"
 
-    # The "Lost" badge appears exactly once per unavailable level.
-    lost_count = html.count("badge-unavailable")
-    expected_lost = sum(1 for a in api.values() if not a)
-    assert lost_count == expected_lost, (lost_count, expected_lost)
+    # The sealed label suffix appears exactly once per unavailable level.
+    sealed_count = html.count("(sealed — fallback content)")
+    expected_sealed = sum(1 for lid in range(0, 19) if not api.get(lid, False))
+    assert sealed_count == expected_sealed, (sealed_count, expected_sealed)
 
 
 def test_grid_available_tiles_match_api_available_set(client):
+    # Superseded by the map redesign (M9/M10): available hotspots carry the bare
+    # `class="map-hotspot"` (no is-sealed); the set must match /api/levels.
     api = client.get("/api/levels").json()["levels"]
     available_ids = sorted(lvl["id"] for lvl in api if lvl["available"])
     # Mocked tree -> folders 1, 2, 8 present.
     assert available_ids == [1, 2, 8]
 
-    html = client.get("/").text
-    # Available tiles do NOT carry is-unavailable; collect their ids.
-    available_tiles = re.findall(
-        r'<a\s+class="level-tile"\s+href="/level/(\d+)"', html
+    html = client.get("/").text  # horror map
+    available_hotspots = re.findall(
+        r'<a\s+class="map-hotspot"\s+href="/level/(\d+)"', html
     )
-    assert sorted(int(x) for x in available_tiles) == available_ids
+    assert sorted(int(x) for x in available_hotspots) == available_ids
 
 
 # ===========================================================================
@@ -236,9 +243,17 @@ def test_referenced_static_asset_served_200(client, asset):
     assert len(resp.content) > 0
 
 
+def _links_style_css(html: str) -> bool:
+    # style.css is now cache-busted (?v=N) after the M9/M10 map redesign; accept
+    # the bare link OR any ?v=<n> query so the guard tracks cache-bust bumps.
+    return bool(
+        re.search(r'<link rel="stylesheet" href="/static/style\.css(?:\?v=\d+)?" />', html)
+    )
+
+
 def test_index_links_all_static_assets(client):
     html = client.get("/").text
-    assert '<link rel="stylesheet" href="/static/style.css" />' in html
+    assert _links_style_css(html), "style.css link missing/unexpected form"
     assert '<script src="/static/theme.js"></script>' in html
     assert '<script src="/static/audio-engine.js"></script>' in html
 
