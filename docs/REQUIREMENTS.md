@@ -1,6 +1,6 @@
 # Requirements — Archive 19: Dual-Atmosphere Dynamic Gallery
 
-Status: **APPROVED design, pending asset data.** Supersedes the original single-theme blueprint.
+Status: **Discovery COMPLETE — design approved, asset reality confirmed (§7).** Supersedes the original single-theme blueprint. Build proceeds with placeholders (§8).
 
 ## 1. Vision
 An interactive web app with a **variable** number of levels (0 → up to 18) presented through **two distinct, toggleable realities**. The chosen theme persists across the whole session and is switchable from any page.
@@ -46,7 +46,7 @@ An interactive web app with a **variable** number of levels (0 → up to 18) pre
 - **D9 — Asset split:** ✅ **Images in Google Drive; normal per-level audio in the GitHub repo** (`static/audio/`). Exception: the **missing-level fallback** image AND audio both come from the Drive `missing/` folder.
 - **D12 — Drive access:** ✅ The `all ages` parent folder is shared **"Anyone with the link → Viewer"**, so the plain `GD_API_KEY` can read it. No service account needed.
 - **D10 — Drive config:** ✅ A single **parent** Drive folder (one link/ID in `GD_ROOT_FOLDER`) whose children are the numbered subfolders `0..18` + `missing/`. Backend lists the parent's children to discover which levels exist → dynamic scaling.
-- **D11 — Per-theme level tracks:** ✅ Horror and Sea each have their **own** per-level tracks (`static/audio/horror/`, `static/audio/sea/`), plus per-theme `_fallback/` sets.
+- **D11 — Per-theme level tracks:** ✅ Horror and Sea each have their **own** per-level tracks (`static/audio/horror/`, `static/audio/sea/`). The missing-level fallback audio is NOT local — it comes from the Drive `missing/` folder per D6/D9.
 
 ## 6. Configuration variables
 - `GD_API_KEY` — **secret**, never committed; read via `os.environ`.
