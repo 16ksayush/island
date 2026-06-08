@@ -58,7 +58,14 @@
       "Bash(ls && echo \"---REQ---\" && cat docs/REQUIREMENTS.md 2>/dev/null | head -120 && echo \"---REQS-DEV---\" && cat requirements*.txt 2>/dev/null && echo \"---VENV---\" && ls .venv/bin/python 2>/dev/null)",
       "Read(//Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/**)",
       "Bash(.venv/bin/python -m pytest tests/test_cache.py -q)",
-      "Bash(.venv/bin/python -m pytest tests/test_cache.py -v)"
+      "Bash(.venv/bin/python -m pytest tests/test_cache.py -v)",
+      "Bash(.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000)",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/levels\")",
+      "Bash(curl -s -o /dev/null -w \"GET / -> HTTP %{http_code}\\\\n\" \"http://127.0.0.1:8000/\")",
+      "Bash(curl -s -o /dev/null -w \"GET /api/levels -> HTTP %{http_code}\\\\n\" \"http://127.0.0.1:8000/api/levels\")",
+      "Bash(curl -s -o /dev/null -w \"GET /level/8 -> HTTP %{http_code} \\(present\\)\\\\n\" \"http://127.0.0.1:8000/level/8\")",
+      "Bash(curl -s \"http://127.0.0.1:8000/\")",
+      "Bash(curl -s \"http://127.0.0.1:8000/level/8\")"
     ]
   }
 }

@@ -1,6 +1,6 @@
 # Plan & Backlog — Archive 19: Dual-Atmosphere Dynamic Gallery
 
-Status: **Phase 2 EXECUTION COMPLETE — M1–M7 done, M8 (live deploy) pending.** Backend + frontend implemented, security-audited (T6/T11 APPROVED), full pytest suite green (58 passed, 0 warnings), local `uvicorn` smoke test passing, deploy config (`render.yaml` + `Procfile`) committed. R2/R3 decisions locked (see Risk triage). Remaining: provide real `GD_API_KEY`/`GD_ROOT_FOLDER` + assets, then live verification on Render/Railway.
+Status: **Phase 2 EXECUTION COMPLETE — M1–M7 done, M8 (live deploy) pending. NEW: M9 Horror Atmosphere Redesign (frontend-only visual restyle) in Discovery — see bottom section.** Backend + frontend implemented, security-audited (T6/T11 APPROVED), full pytest suite green (58 passed, 0 warnings), local `uvicorn` smoke test passing, deploy config (`render.yaml` + `Procfile`) committed. R2/R3 decisions locked (see Risk triage). Remaining: provide real `GD_API_KEY`/`GD_ROOT_FOLDER` + assets, then live verification on Render/Railway.
 
 ## Milestones
 - [x] **M0 — Discovery:** dual-theme PRD captured; requirements, architecture, plan documented; design questions answered.
@@ -49,3 +49,34 @@ Status: **Phase 2 EXECUTION COMPLETE — M1–M7 done, M8 (live deploy) pending.
 **Clarifying questions — RESOLVED:**
 1. (R2) Discovery freshness → startup cache + manual `POST /api/refresh` (no automatic TTL).
 2. (R3) Missing-level look → re-rolled on each visit (shifting/uncanny), not stable per level.
+
+---
+
+## Horror Atmosphere Redesign (change request — 2026-06-08)
+
+Status: **Discovery COMPLETE — design approved (ARCHITECTURE §8), decisions LOCKED, ready for `orchestrate-build`.** Frontend-only visual restyle of the HORROR theme (REQUIREMENTS §9, HR1–HR8 / NF-HR1–NF-HR6). Sea & Island, backend, routes, payloads, audio, and deploy config are all out of scope and unchanged. Architect surfaced 6 technical risks (R-H1…R-H6, ARCHITECTURE §8.9) — all folded into the backlog ACs below.
+
+**User-locked decisions (2026-06-08):**
+- HQ1 — Background technique: **pure CSS/SVG** (no raster asset; H5 skipped).
+- HQ2 / R-H1 — Cloaked hooded figure: **INCLUDED** (user override of the OFF default) — must be tuned (low opacity, anchored low-center) so it does not clutter or sit under the door grid.
+- HQ3 / R-H6 — Per-level page intensity: **FULL corridor scene** behind the slideshow (user override of the calmer default) — so R-H5 glow-wash guard + R-H2 contrast check over the slideshow are now critical, not optional.
+- HQ4 — Ambient motion: **ON, subtle**, frozen under `prefers-reduced-motion`.
+
+### Milestone
+- [ ] **M9 — Horror Atmosphere Redesign (frontend-only):** Cinematic haunted-corridor background on the Horror landing and a horror ambiance behind each per-level stage, via the existing `.atmosphere` overlay + `.theme-horror` `--page-bg-image`/`--vignette` injection points. Door grid layout, all functionality, performance (prefetch/cache), accessibility (`prefers-reduced-motion`), responsiveness, and theme isolation (Sea untouched) all preserved. Security-audited + QA-regression-verified before freeze.
+
+### Sequenced backlog (M9 — after Open Questions resolved)
+| # | Task | Owner | Depends on |
+|---|---|---|---|
+| H0 | Resolve Open Questions HQ1–HQ5 (HQ1 asset strategy, HQ2 decorative scope, HQ3 per-level intensity, HQ4 motion, HQ5 figure/claw page-scope) + architect risk decisions R-H1 (figure on/off) and R-H6 (per-level intensity). All carry recommended defaults (ARCHITECTURE §8.8) — a "go" locks them; only the user-facing subset (see PM Discovery questions) needs an explicit answer. | project-manager + user | §9 |
+| H1 | Design technical approach: CSS/SVG vs image-asset vs hybrid; exact `.theme-horror` token changes (navy palette, moonlit `--vignette`/`--page-bg-image`), `.atmosphere` layering plan, responsive `background-size`/position, per-level treatment (HR2). Confirm zero impact to Sea + JS/payloads. **DONE — see ARCHITECTURE §8.1–§8.8.** | solutions-architect | H0 |
+| H2 | Implement Horror landing background — restyle `.theme-horror` tokens + atmosphere in `static/style.css` + horror-scoped decorative SVG in `index.html`. Preserve door-grid markup + tile contract (HR3/HR5). **AC (R-H1, LOCKED ON):** the cloaked hooded figure IS included — render it as a faint, low-opacity inline-SVG silhouette anchored low-center behind the grid, `aria-hidden`, `pointer-events:none`; tune opacity/placement so it never obscures or sits under a clickable door tile. Moonlit doorway + faint edge clawed-hands + fog also included. | frontend-engineer | H1 |
+| H3 | Implement Horror per-level background — `.theme-horror .level-stage`/page background (HR2); keep slideshow, nav, dots, contrast (HR6) intact. **AC (R-H6, LOCKED — FULL scene):** per-level uses the full corridor scene (glow + fog + figure/claws), NOT the calmer variant. **AC (R-H5, now critical):** because the full scene sits behind the slideshow, keep the `.level-stage` inset shadow AND add a backing scrim/panel behind the images so the central glow + fog never wash out slideshow edges or reduce photo legibility. | frontend-engineer | H1 |
+| H4 | Apply chosen decorative elements (moonlit door, figure, clawed hands, fog) per HQ2, and optional reduced-motion-gated ambient motion per HQ4 (HR7/HR8, NF-HR2). **AC (R-H3):** moonlight flicker stays slow/subtle (no rapid luminance flashing, well under 3 flashes/sec) and freezes to a static frame under `prefers-reduced-motion` via an explicit fallback (not the global kill-switch alone). **AC (R-H4):** fog `filter: blur()` kept to small fixed layers; if mobile profiling shows cost, reduce blur radius or bake into the gradient. | frontend-engineer | H2, H3 |
+| H5 | (If HQ1 = image/hybrid) Add + optimize background asset(s) under `static/img/horror/`, document source/license; verify byte budget ≤150 KB WebP (NF-HR1). **Skipped under the recommended pure-CSS/SVG default.** | frontend-engineer | H1 |
+| H6 | Security audit: confirm diff is restricted to horror-scoped CSS/templates (+ any `static/` asset), no secret/Drive exposure, no open inline-script changes, decorative layers `aria-hidden`. | security-engineer | H2, H3, H4, H5 |
+| H7 | QA regression: SSR renders `.theme-horror` from cookie unchanged; **Sea theme byte-unchanged / visually unaffected**; grid renders configured + missing tiles; toggle/nav/slideshow/audio still work; `prefers-reduced-motion` honored; responsive at mobile/desktop; existing pytest suite still green (58). **AC (R-H2):** run a WCAG AA contrast check on `--fg`/`--muted`/`--accent` and slide dots against the new navy `--bg`+fog before freeze; bump `--muted` lightness if it fails. **AC (R-H4):** mobile QA pass confirming no fog-blur jank on a low-end/mobile GPU. | qa-tester | H6 |
+| H8 | Local `uvicorn` smoke test (`/`, `/level/{id}`, theme cookie both themes), visual sign-off, confirm no perf regression (prefetch/cache intact). **AC (R-H1):** visual eyeball of the figure decision before sign-off; **AC (R-H5):** confirm level-page glow does not wash the slideshow. | project-manager | H7 |
+
+### Gate (M9)
+✅ **Discovery + design complete; H1 done (ARCHITECTURE §8); H0 decisions LOCKED by the user (see status block).** All 6 architect risks (R-H1…R-H6) folded into H2/H3/H4/H7/H8 as acceptance criteria. **Released for `orchestrate-build` Phase 2** (FRONTEND_ENGINEER H2/H3/H4 → SECURITY_ENGINEER H6 → QA_TESTER H7 → PM H8). User chose: pure CSS/SVG, figure INCLUDED, FULL per-level scene, subtle motion. No deploy-config or backend changes; M8 (live deploy) status is independent.
