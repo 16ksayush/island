@@ -1,20 +1,44 @@
-# Secrets — never commit
+# ── Secrets — NEVER commit (GD_API_KEY is the only secret) ──
 .env
 .env.*
+# template with empty stubs IS tracked (negation must be its own line)
 !.env.example
 *.key
+*.pem
+# OAuth2 service-account creds (if ever introduced)
 service-account*.json
+credentials*.json
+client_secret*.json
 
-# Python
+# ── Python ──
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
+.eggs/
+build/
+dist/
 .venv/
 venv/
 env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# OS / editor
+# ── OS / editor ──
 .DS_Store
+.DS_Store?
+Thumbs.db
 *.swp
+*~
 .idea/
 .vscode/
+
+# ── Explicit allow-list: committed assets must stay tracked (D9) ──
+# Audio ships in-repo; ensure no broad rule above ever hides it.
+!static/
+!static/audio/
+!static/audio/**/*.mp3

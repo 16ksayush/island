@@ -1,0 +1,29 @@
+# Render Blueprint — Archive 19: Dual-Atmosphere Dynamic Gallery
+# Free-tier web service. Apply via Render Dashboard -> "New +" -> "Blueprint"
+# and point it at this repo, or `render blueprint launch`.
+#
+# Secrets are NOT stored here. GD_API_KEY is declared with `sync: false`, which
+# tells Render to prompt for / require the value in the dashboard rather than
+# read it from this committed file. Never commit the real key.
+services:
+  - type: web
+    name: archive19-gallery
+    runtime: python
+    plan: free
+    region: oregon            # adjust as needed (oregon | frankfurt | singapore | ohio | virginia)
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    autoDeploy: true
+    healthCheckPath: /api/levels
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.0"
+      # SECRET — set the real value in the Render dashboard (Environment tab).
+      # sync:false => Render requires it at deploy time and never reads it from git.
+      - key: GD_API_KEY
+        sync: false
+      # CONFIG — parent Drive folder ID (or share link). Safe to set in dashboard;
+      # left blank here so the app degrades gracefully until it's configured.
+      - key: GD_ROOT_FOLDER
+        sync: false

@@ -1,0 +1,367 @@
+/* =========================================================================
+   Archive 19 — Dual-Atmosphere Dynamic Gallery
+   T7: dual-theme tokens + bespoke atmosphere (Tailwind CDN handles layout).
+
+   Two themes, selected by a class on <html>/<body> (SSR reads the cookie):
+     .theme-horror -> Haunted Gothic Corridor (#0D0D0D charcoal + #FFB000 amber)
+     .theme-sea    -> Sunlit Archipelago (#E0F2FE / #0284C7 azures + warm sand)
+
+   Theme repaint animates over ~1.5s (CLAUDE.md). All colors flow through CSS
+   custom properties so a class swap on the root transitions every surface.
+   ========================================================================= */
+
+/* ---- Theme tokens -------------------------------------------------------- */
+:root {
+  --t-transition: 1.5s;
+
+  /* Sensible neutral defaults; overridden by .theme-* below. */
+  --bg: #0d0d0d;
+  --bg-2: #161616;
+  --fg: #f4f4f4;
+  --muted: #9a9a9a;
+  --accent: #ffb000;
+  --accent-soft: rgba(255, 176, 0, 0.18);
+  --tile-bg: #1a1a1a;
+  --tile-border: #2a2a2a;
+  --tile-fg: #f4f4f4;
+  --tile-shadow: rgba(0, 0, 0, 0.6);
+  --unavailable-fg: #6a6a6a;
+  --vignette: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0) 35%,
+    rgba(0, 0, 0, 0.85) 100%
+  );
+  --page-bg-image: none;
+}
+
+/* ---- Horror: Haunted Gothic Corridor ------------------------------------ */
+.theme-horror {
+  --bg: #0d0d0d;
+  --bg-2: #161210;
+  --fg: #ede4d3;
+  --muted: #8a7f6c;
+  --accent: #ffb000;
+  --accent-soft: rgba(255, 176, 0, 0.16);
+  --tile-bg: #1c1714;
+  --tile-border: #3a2f1c;
+  --tile-fg: #ede4d3;
+  --tile-shadow: rgba(0, 0, 0, 0.75);
+  --unavailable-fg: #5c5346;
+  --vignette: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0) 30%,
+    rgba(0, 0, 0, 0.9) 100%
+  );
+  --page-bg-image:
+    radial-gradient(
+      circle at 50% -10%,
+      rgba(255, 176, 0, 0.08),
+      transparent 45%
+    );
+}
+
+/* ---- Sea & Island: Sunlit Archipelago ----------------------------------- */
+.theme-sea {
+  --bg: #e0f2fe;
+  --bg-2: #bae6fd;
+  --fg: #0c4a6e;
+  --muted: #3b7da3;
+  --accent: #0284c7;
+  --accent-soft: rgba(2, 132, 199, 0.15);
+  --tile-bg: #fef9ef; /* warm sand */
+  --tile-border: #fcd9a8;
+  --tile-fg: #0c4a6e;
+  --tile-shadow: rgba(2, 132, 199, 0.25);
+  --unavailable-fg: #7fa9c2;
+  --vignette: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.12) 40%,
+    rgba(2, 132, 199, 0.18) 100%
+  );
+  --page-bg-image:
+    radial-gradient(circle at 80% 12%, rgba(255, 236, 173, 0.7), transparent 40%),
+    linear-gradient(180deg, #e0f2fe 0%, #7dd3fc 55%, #38bdf8 100%);
+}
+
+/* ---- Base surfaces (transition the whole page on theme swap) ------------ */
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  color: var(--fg);
+  background-color: var(--bg);
+  background-image: var(--page-bg-image);
+  background-attachment: fixed;
+  font-family: "Georgia", "Times New Roman", serif;
+  transition:
+    background-color var(--t-transition) ease,
+    color var(--t-transition) ease;
+}
+
+.theme-sea body,
+.theme-sea {
+  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+}
+
+/* Theme-wide vignette / atmosphere overlay (pointer-transparent). */
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: var(--vignette);
+  transition: background var(--t-transition) ease;
+}
+
+.layer {
+  position: relative;
+  z-index: 1;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* ---- Theme toggle (present on every page) ------------------------------- */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition:
+    background var(--t-transition) ease,
+    border-color var(--t-transition) ease,
+    color var(--t-transition) ease,
+    transform 0.15s ease;
+}
+
+.theme-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.theme-toggle:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.theme-toggle .toggle-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* ---- Heading / accent helpers ------------------------------------------- */
+.accent {
+  color: var(--accent);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.page-title {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  transition: color var(--t-transition) ease;
+}
+
+.theme-horror .page-title {
+  text-shadow: 0 0 14px rgba(255, 176, 0, 0.35);
+}
+
+/* =========================================================================
+   Level tiles — shared structure, theme-specific skin
+   ========================================================================= */
+.level-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 3 / 4;
+  text-decoration: none;
+  color: var(--tile-fg);
+  background-color: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  box-shadow: 0 10px 30px var(--tile-shadow);
+  transition:
+    background-color var(--t-transition) ease,
+    border-color var(--t-transition) ease,
+    color var(--t-transition) ease,
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.level-tile:hover,
+.level-tile:focus-visible {
+  transform: translateY(-4px) scale(1.02);
+  outline: none;
+}
+
+.level-tile:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.level-tile .level-number {
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  font-weight: 700;
+}
+
+.level-tile .level-label {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Unavailable (missing-but-listed) tiles still render, visibly flagged. */
+.level-tile.is-unavailable {
+  color: var(--unavailable-fg);
+  filter: grayscale(0.4);
+  opacity: 0.75;
+}
+
+.level-tile.is-unavailable .level-number,
+.level-tile.is-unavailable .level-label {
+  color: var(--unavailable-fg);
+}
+
+.level-tile .badge-unavailable {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--unavailable-fg);
+  border-radius: 4px;
+  color: var(--unavailable-fg);
+}
+
+/* ---- Horror skin: the tile is a DOOR in a corridor ---------------------- */
+.theme-horror .level-tile {
+  border-radius: 90px 90px 8px 8px; /* arched door top */
+  background-image:
+    linear-gradient(180deg, rgba(255, 176, 0, 0.05), transparent 30%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.25) 0 12px,
+      transparent 12px 26px
+    );
+}
+
+.theme-horror .level-tile::after {
+  /* doorknob */
+  content: "";
+  position: absolute;
+  right: 12%;
+  top: 52%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(255, 176, 0, 0.7);
+}
+
+.theme-horror .level-tile:hover {
+  box-shadow:
+    0 0 26px rgba(255, 176, 0, 0.35),
+    0 14px 36px var(--tile-shadow);
+}
+
+/* ---- Sea skin: the tile is an ISLAND on the water ----------------------- */
+.theme-sea .level-tile {
+  border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%; /* island blob */
+  aspect-ratio: 1 / 1;
+  background-image:
+    radial-gradient(circle at 50% 30%, #7cc36b 0 22%, transparent 23%), /* palm tuft */
+    linear-gradient(180deg, #fde9c4 0%, #f4d59a 60%, #e9c47e 100%); /* sand */
+  box-shadow:
+    0 14px 26px rgba(2, 132, 199, 0.35),
+    0 0 0 10px rgba(255, 255, 255, 0.25); /* foam ring */
+}
+
+.theme-sea .level-tile:hover {
+  box-shadow:
+    0 18px 30px rgba(2, 132, 199, 0.4),
+    0 0 0 12px rgba(255, 255, 255, 0.4);
+}
+
+.theme-sea .level-tile.is-unavailable {
+  /* a sunken / barren islet */
+  background-image:
+    linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%);
+}
+
+/* =========================================================================
+   Level page — room (horror) vs beach (sea)
+   ========================================================================= */
+.level-stage {
+  position: relative;
+  border-radius: 12px;
+  padding: 1.5rem;
+  background-color: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  transition:
+    background-color var(--t-transition) ease,
+    border-color var(--t-transition) ease;
+}
+
+.theme-horror .level-stage {
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.85);
+}
+
+.theme-sea .level-stage {
+  background-image: linear-gradient(180deg, #fffaf0, #fdeecb);
+  box-shadow: 0 12px 30px rgba(2, 132, 199, 0.25);
+}
+
+.gallery-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--tile-border);
+  background: var(--bg-2);
+  transition: transform 0.3s ease;
+}
+
+.gallery-img:hover {
+  transform: scale(1.03);
+}
+
+.spinner {
+  width: 38px;
+  height: 38px;
+  border: 4px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Respect users who prefer reduced motion: kill long transitions/animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

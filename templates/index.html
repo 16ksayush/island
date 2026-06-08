@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-{{ theme }}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Archive 19 — {% if theme == 'sea' %}Archipelago{% else %}Haunted Corridor{% endif %}</title>
+
+    <!-- Tailwind via CDN (layout); style.css holds theme tokens + atmosphere. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+
+  <body class="theme-{{ theme }} min-h-screen">
+    <!-- pointer-transparent vignette / sky overlay -->
+    <div class="atmosphere" aria-hidden="true"></div>
+
+    <div class="layer mx-auto max-w-6xl px-4 py-8">
+      <!-- Header + global theme toggle (present on EVERY page) -->
+      <header class="flex items-center justify-between gap-4 flex-wrap mb-8">
+        <div>
+          <h1 class="page-title text-3xl sm:text-4xl m-0">Archive 19</h1>
+          <p class="muted m-0 mt-1 text-sm">
+            {% if theme == 'sea' %}
+              An open archipelago — choose an island.
+            {% else %}
+              A haunted corridor — choose a door.
+            {% endif %}
+          </p>
+        </div>
+
+        <button
+          id="theme-toggle"
+          type="button"
+          class="theme-toggle"
+          aria-label="Toggle between Horror and Sea themes"
+        >
+          <span class="toggle-icon" aria-hidden="true">
+            {% if theme == 'sea' %}🌙{% else %}🌊{% endif %}
+          </span>
+          <span>
+            {% if theme == 'sea' %}Enter the Corridor{% else %}Sail to the Sea{% endif %}
+          </span>
+        </button>
+      </header>
+
+      <!-- Dynamic grid: render EXACTLY the levels the backend discovered. -->
+      <main>
+        {% if levels and levels|length > 0 %}
+        <section
+          aria-label="{% if theme == 'sea' %}Island map{% else %}Corridor of doors{% endif %}"
+          class="grid gap-5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+        >
+          {% for lvl in levels %}
+          {% if lvl.available %}
+          <a
+            class="level-tile"
+            href="/level/{{ lvl.id }}"
+            aria-label="Level {{ lvl.id }}{% if theme == 'sea' %} island{% else %} door{% endif %}"
+          >
+            <span class="level-number">{{ lvl.id }}</span>
+            <span class="level-label">
+              {% if theme == 'sea' %}Island{% else %}Door{% endif %}
+            </span>
+          </a>
+          {% else %}
+          <a
+            class="level-tile is-unavailable"
+            href="/level/{{ lvl.id }}"
+            aria-label="Level {{ lvl.id }} (unavailable — fallback content)"
+          >
+            <span class="badge-unavailable">Lost</span>
+            <span class="level-number">{{ lvl.id }}</span>
+            <span class="level-label">
+              {% if theme == 'sea' %}Sunken{% else %}Sealed{% endif %}
+            </span>
+          </a>
+          {% endif %}
+          {% endfor %}
+        </section>
+        {% else %}
+        <section class="text-center py-20">
+          <p class="muted text-lg">
+            No levels are configured yet. Check back once the archive is populated.
+          </p>
+        </section>
+        {% endif %}
+      </main>
+
+      <footer class="mt-12 text-center muted text-xs">
+        Archive 19 · Dual-Atmosphere Dynamic Gallery
+      </footer>
+    </div>
+
+    <!-- Shared scripts: theme persistence/toggle + audio crossfade engine. -->
+    <script src="/static/theme.js"></script>
+    <script src="/static/audio-engine.js"></script>
+    <script>
+      // Landing: loop the global ambient for the active (SSR) theme.
+      (function () {
+        var theme = "{{ theme }}";
+        if (window.Archive19Audio) {
+          window.Archive19Audio.playAmbient(theme);
+        }
+      })();
+    </script>
+  </body>
+</html>

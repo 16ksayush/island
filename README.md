@@ -8,7 +8,7 @@ An interactive web gallery with a **dynamically-scaled** number of levels (0 →
 | `#0D0D0D` obsidian + `#FFB000` molten amber, shadowed vignette | `#E0F2FE`/`#0284C7` azures + warm sand, white coral, palm green |
 | Continuous atmospheric horror soundtrack | Bright, relaxing ocean/acoustic ambient |
 
-> **Status:** 🏗️ Blueprint complete (Discovery ✅). The full design — requirements, architecture, and build plan — is locked. Application code is generated in Phase 2 via the `orchestrate-build` multi-agent skill. See [Project Status](#-project-status).
+> **Status:** ✅ Implemented. The backend (FastAPI Drive proxy), frontend (SSR Jinja2 + dual themes + audio engine), and the full test suite (**58 passed**) are complete and security-audited. Deploy config (`render.yaml` / `Procfile`) is ready; live deployment (M8) is the remaining step. See [Project Status](#-project-status). *(Note: real Google Drive assets and the `.mp3` audio files are still placeholders.)*
 
 ---
 
@@ -52,19 +52,22 @@ Browser proxies image bytes via /api/levels/{id}/media/{file_id}; never sees the
 Audio loads from /static/audio/...  (no Drive, no key).
 ```
 
-### Planned endpoints
+### Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/` | Landing page; dynamic grid sized to configured levels; theme from cookie |
+| GET | `/` | Landing page; dynamic grid sized to discovered levels; theme from cookie |
 | GET | `/level/{id}` | Dedicated, theme-styled level page (room / beach) |
-| GET | `/api/levels` | Configured levels + availability flag (real vs missing-fallback) |
-| GET | `/api/levels/{id}/photos` | Image refs for a level (proxied URLs) |
-| GET | `/api/levels/{id}/media/{file_id}` | Stream a single image's bytes from Drive |
+| GET | `/api/levels` | Discovered levels + `available` flag (here `available` = the numbered folder exists) |
+| GET | `/api/levels/{id}/photos` | Image refs for a level + fallback audio (here `available` = folder exists **and** is non-empty) |
+| GET | `/api/levels/{id}/media/{file_id}` | Stream a single image's bytes from Drive (key stays server-side) |
+| POST | `/api/refresh` | Rebuild the level-discovery cache |
+
+> **Two-layer `available` semantics (QA-flagged):** in `/api/levels`, `available` means the numbered Drive folder *exists*; in `/api/levels/{id}/photos`, `available` means the folder exists **and** contains media. A level can therefore be listed as available yet still fall back to the `missing/` folder when its photos are requested.
 
 Full design lives in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md), and [docs/PLAN.md](docs/PLAN.md).
 
-### Planned project structure
+### Project structure
 
 ```
 island/
@@ -103,8 +106,6 @@ The app reads two environment variables (never commit the key):
 
 ## 🚀 Getting Started
 
-> ⚠️ Application code is produced in Phase 2 (see [Project Status](#-project-status)). Once `app/`, `requirements.txt`, and `.env.example` exist, the steps below apply.
-
 ```bash
 # 1. Clone
 git clone https://github.com/16ksayush/island.git
@@ -117,7 +118,7 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure secrets
+# 4. Configure secrets (optional for a first run — see note below)
 cp .env.example .env             # then fill in GD_API_KEY and GD_ROOT_FOLDER
 
 # 5. Run the dev server
@@ -125,6 +126,51 @@ uvicorn app.main:app --reload
 ```
 
 Open http://localhost:8000.
+
+> The app **starts and serves even with no `GD_API_KEY` / `GD_ROOT_FOLDER`** — level discovery simply degrades to an empty gallery (`/api/levels` returns `{"levels": []}`) and the page still renders with its theme. Set both env vars to load real Drive content.
+
+### 🧪 Running tests
+
+The suite is hermetic (Drive is fully mocked — no network, no real key):
+
+```bash
+pytest tests/            # 58 passed
+# or, without activating the venv:
+.venv/bin/python -m pytest tests/ -q
+```
+
+### ☁️ Deploying
+
+Free-tier deploy config is committed: [`render.yaml`](render.yaml) (Render Blueprint) and [`Procfile`](Procfile) (Railway / Heroku-style). Start command:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Set `GD_API_KEY` (secret) and `GD_ROOT_FOLDER` (config) in the host dashboard — never in a committed file. Full steps below.
+
+---
+
+## 🌐 Deployment (Render / Railway)
+
+Both platforms build from `requirements.txt` and run the start command above. The Drive parent folder must be shared **"Anyone with the link → Viewer"** so the API key can read it.
+
+### Render (Blueprint via `render.yaml`)
+
+1. Push this repo to GitHub.
+2. In the Render dashboard: **New + → Blueprint**, select the repo. Render reads `render.yaml` and provisions a free `web` service with build `pip install -r requirements.txt` and the `uvicorn … --port $PORT` start command.
+3. When prompted (both vars are declared `sync: false`), set **Environment** values:
+   - `GD_API_KEY` — your Google Drive API key (secret).
+   - `GD_ROOT_FOLDER` — the parent folder ID/link holding `0..18` + `missing/`.
+4. Deploy. Health check hits `/api/levels`. Visit the assigned `*.onrender.com` URL.
+
+### Railway (`Procfile`)
+
+1. **New Project → Deploy from GitHub repo**; Railway auto-detects Python and the `Procfile` `web:` process.
+2. In **Variables**, add `GD_API_KEY` (secret) and `GD_ROOT_FOLDER` (config). Railway injects `$PORT` automatically.
+3. Deploy and open the generated public domain.
+
+> If env vars are omitted, the deploy still boots and serves an empty gallery (graceful degradation) — useful for verifying the deploy before wiring up Drive.
 
 ---
 
@@ -147,17 +193,17 @@ This repo is engineered with [Claude Code](https://claude.com/claude-code) using
 
 ## 📊 Project Status
 
-Discovery is **complete**; build proceeds with placeholders. Milestones:
+Build is **complete** through M7; deploy config is ready (M8 = live verification). Code uses placeholder Drive assets / `.mp3` files. Milestones:
 
 - [x] **M0 — Discovery** — dual-theme PRD, requirements, architecture, and plan documented
-- [ ] **M1 — Scaffold & secure** — file tree, `requirements.txt`, `.env.example`, hardened `.gitignore`, audio tree
-- [ ] **M2 — Backend dynamic core** — `drive_service.py`, `main.py` routes + theme cookie
-- [ ] **M3 — Theme system** — `style.css`, global toggle, cookie + sessionStorage, SSR theme read
-- [ ] **M4 — Landing grid** — dynamic Corridor Grid ⇄ Island Map
-- [ ] **M5 — Level pages** — `/level/{id}` room/beach presentation + proxied images
-- [ ] **M6 — Audio engine** — per-theme ambient + per-level crossfade
-- [ ] **M7 — Harden, test & verify** — error handling, pytest suite (Drive mocked), local smoke test
-- [ ] **M8 — Deploy** — Render/Railway config, live verification
+- [x] **M1 — Scaffold & secure** — file tree, `requirements.txt`, `.env.example`, hardened `.gitignore`, audio tree
+- [x] **M2 — Backend dynamic core** — `drive_service.py`, `main.py` routes + theme cookie
+- [x] **M3 — Theme system** — `style.css`, global toggle, cookie + sessionStorage, SSR theme read
+- [x] **M4 — Landing grid** — dynamic Corridor Grid ⇄ Island Map
+- [x] **M5 — Level pages** — `/level/{id}` room/beach presentation + proxied images
+- [x] **M6 — Audio engine** — per-theme ambient + per-level crossfade
+- [x] **M7 — Harden, test & verify** — error handling, full pytest suite (58 passed, Drive mocked), local uvicorn smoke test
+- [ ] **M8 — Deploy** — Render/Railway config committed (`render.yaml` / `Procfile`); live verification pending
 
 ---
 

@@ -1,17 +1,19 @@
 # Plan & Backlog — Archive 19: Dual-Atmosphere Dynamic Gallery
 
-Status: **Discovery COMPLETE — backlog sequenced and ready.** Asset reality confirmed; architecture validated (payload schemas §4.1, in-memory level→folder map §5.1, missing-audio data flow corrected). Six technical risks triaged: R1 (open-proxy) and R6 (MIME echo) folded in as hard acceptance criteria; R4 (pagination) and R5 (empty-but-present folder) locked by default; R2 (discovery freshness) and R3 (fallback determinism) carry recommended defaults but remain user-confirmable. Phase 2 (`orchestrate-build`) is unblocked, building with placeholders. Awaiting the user's go.
+Status: **Phase 2 EXECUTION COMPLETE — M1–M7 done, M8 (live deploy) pending.** Backend + frontend implemented, security-audited (T6/T11 APPROVED), full pytest suite green (58 passed, 0 warnings), local `uvicorn` smoke test passing, deploy config (`render.yaml` + `Procfile`) committed. R2/R3 decisions locked (see Risk triage). Remaining: provide real `GD_API_KEY`/`GD_ROOT_FOLDER` + assets, then live verification on Render/Railway.
 
 ## Milestones
 - [x] **M0 — Discovery:** dual-theme PRD captured; requirements, architecture, plan documented; design questions answered.
-- [ ] **M1 — Scaffold & secure:** PRD file tree (`app/`, `static/`, `templates/`), `requirements.txt`, `.env.example` (`GD_API_KEY`, `GD_ROOT_FOLDER`), hardened `.gitignore`, audio tree `static/audio/{global,horror,sea}/` (missing-level fallback audio is from Drive `missing/`, not local — D6/D9).
-- [ ] **M2 — Backend dynamic core:** `drive_service.py` (Drive client under `GD_ROOT_FOLDER`, child discovery for dynamic scaling, `missing/` image fallback), `main.py` routes incl. theme cookie.
-- [ ] **M3 — Theme system:** `style.css` `.theme-horror`/`.theme-sea`, global toggle on every page, cookie + sessionStorage persistence, SSR theme read.
-- [ ] **M4 — Landing grid:** dynamic Corridor Grid ⇄ Island Map; renders configured levels + missing tiles.
-- [ ] **M5 — Level pages:** `/level/{id}` (`level.html`) room/beach presentation; image rendering via proxy.
-- [ ] **M6 — Audio engine:** global ambient per theme + per-level crossfade, auto-play-safe.
-- [ ] **M7 — Harden, test & verify:** error handling, missing-folder paths, security audit per file, **QA_TESTER pytest suite (Drive mocked) + behavioral checks**, local `uvicorn` smoke test. No unit frozen until audited AND tests pass.
-- [ ] **M8 — Deploy:** Render/Railway config, `GD_API_KEY` env var, live verification.
+- [x] **M1 — Scaffold & secure:** PRD file tree (`app/`, `static/`, `templates/`), `requirements.txt`, `.env.example` (`GD_API_KEY`, `GD_ROOT_FOLDER`), hardened `.gitignore`, audio tree `static/audio/{global,horror,sea}/` (missing-level fallback audio is from Drive `missing/`, not local — D6/D9).
+- [x] **M2 — Backend dynamic core:** `drive_service.py` (Drive client under `GD_ROOT_FOLDER`, child discovery for dynamic scaling, `missing/` image fallback), `main.py` routes incl. theme cookie.
+- [x] **M3 — Theme system:** `style.css` `.theme-horror`/`.theme-sea`, global toggle on every page, cookie + sessionStorage persistence, SSR theme read.
+- [x] **M4 — Landing grid:** dynamic Corridor Grid ⇄ Island Map; renders configured levels + missing tiles.
+- [x] **M5 — Level pages:** `/level/{id}` (`level.html`) room/beach presentation; image rendering via proxy.
+- [x] **M6 — Audio engine:** global ambient per theme + per-level crossfade, auto-play-safe.
+- [x] **M7 — Harden, test & verify:** error handling, missing-folder paths, security audit per file (T6/T11 APPROVED), **QA_TESTER pytest suite (Drive mocked) + behavioral checks — 58 passed, 0 warnings**, local `uvicorn` smoke test (`/`, `/api/levels`, theme cookie all 200; graceful degradation with no GD env). All units frozen post-audit + green tests.
+- [ ] **M8 — Deploy:** Render/Railway config committed (`render.yaml` Blueprint + `Procfile`), `GD_API_KEY`/`GD_ROOT_FOLDER` env vars documented; **live verification pending**.
+
+> **Two-layer `available` semantics (QA-flagged, by design):** `/api/levels` reports `available` = the numbered Drive folder *exists*; `/api/levels/{id}/photos` reports `available` = the folder exists **and** is non-empty. A level can be listed as available yet still serve the `missing/` fallback when its photos are fetched.
 
 ## Sequenced backlog (Phase 2 — `orchestrate-build` after sign-off)
 | # | Task | Owner | Depends on |
@@ -33,7 +35,7 @@ Status: **Discovery COMPLETE — backlog sequenced and ready.** Asset reality co
 | T13 | Render/Railway deploy config + instructions | project-manager | T12 |
 
 ## Gate
-✅ **Discovery complete.** All design questions resolved; building with placeholders (`GD_ROOT_FOLDER` + audio stubs filled in locally later). Drive shared public (`GD_API_KEY`); `missing/` folder holds stock images + audio. Phase 2 (`orchestrate-build`) is unblocked — awaiting the user's go to start writing code.
+✅ **Discovery complete** and ✅ **Phase 2 execution complete.** All units built, audited (T6/T11), and verified (58 tests green + uvicorn smoke). Built with placeholders (`GD_ROOT_FOLDER` + audio stubs filled in locally later). Drive shared public (`GD_API_KEY`); `missing/` folder holds stock images + audio. Remaining gate: **M8 live deploy** — user supplies real credentials/assets, then verify on Render/Railway.
 
 ### Risk triage (architect-surfaced)
 **Locked by default (no user input required; defaults recommended):**

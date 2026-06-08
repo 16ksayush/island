@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-{{ theme }}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Archive 19 — Level {{ level_id }}
+      {% if theme == 'sea' %}(Island){% else %}(Room){% endif %}
+    </title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+
+  <body class="theme-{{ theme }} min-h-screen">
+    <div class="atmosphere" aria-hidden="true"></div>
+
+    <div class="layer mx-auto max-w-5xl px-4 py-8">
+      <header class="flex items-center justify-between gap-4 flex-wrap mb-6">
+        <div class="flex items-center gap-4">
+          <a
+            href="/"
+            class="theme-toggle"
+            aria-label="Back to the {% if theme == 'sea' %}island map{% else %}corridor{% endif %}"
+          >
+            <span class="toggle-icon" aria-hidden="true">←</span>
+            <span>Back</span>
+          </a>
+          <h1 class="page-title text-2xl sm:text-3xl m-0">
+            {% if theme == 'sea' %}Island{% else %}Room{% endif %} {{ level_id }}
+          </h1>
+        </div>
+
+        <button
+          id="theme-toggle"
+          type="button"
+          class="theme-toggle"
+          aria-label="Toggle between Horror and Sea themes"
+        >
+          <span class="toggle-icon" aria-hidden="true">
+            {% if theme == 'sea' %}🌙{% else %}🌊{% endif %}
+          </span>
+          <span>
+            {% if theme == 'sea' %}Enter the Corridor{% else %}Sail to the Sea{% endif %}
+          </span>
+        </button>
+      </header>
+
+      {% if not available %}
+      <p class="muted mb-4 text-sm" role="note">
+        This {% if theme == 'sea' %}island has slipped beneath the waves{% else %}door is sealed{% endif %} —
+        showing salvaged fallback content.
+      </p>
+      {% endif %}
+
+      <main class="level-stage layer">
+        <div
+          id="gallery"
+          class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div class="col-span-full flex justify-center py-16" id="loading">
+            <span class="spinner" role="status" aria-label="Loading images"></span>
+          </div>
+        </div>
+      </main>
+
+      <footer class="mt-12 text-center muted text-xs">
+        Archive 19 · Level {{ level_id }}
+      </footer>
+    </div>
+
+    <script src="/static/theme.js"></script>
+    <script src="/static/audio-engine.js"></script>
+    <script>
+      (function () {
+        var theme = "{{ theme }}";
+        var levelId = {{ level_id | tojson }};
+        var ssrAvailable = {{ available | tojson }};
+
+        var gallery = document.getElementById("gallery");
+        var loading = document.getElementById("loading");
+
+        function clearLoading() {
+          gallery.setAttribute("aria-busy", "false");
+          if (loading) loading.remove();
+        }
+
+        function showMessage(msg) {
+          clearLoading();
+          var p = document.createElement("p");
+          p.className = "col-span-full muted text-center py-10";
+          p.textContent = msg;
+          gallery.appendChild(p);
+        }
+
+        function renderImages(images) {
+          clearLoading();
+          if (!images || images.length === 0) {
+            showMessage("No images available for this level.");
+            return;
+          }
+          images.forEach(function (img, idx) {
+            // SECURITY: img.url is a backend-proxied /api/levels/.../media/...
+            // path. We never touch a Drive URL or key client-side.
+            var el = document.createElement("img");
+            el.className = "gallery-img";
+            el.loading = "lazy";
+            el.src = img.url;
+            el.alt =
+              (theme === "sea" ? "Island" : "Room") +
+              " " + levelId + " — image " + (idx + 1);
+            gallery.appendChild(el);
+          });
+        }
+
+        // Decide the level audio source, then crossfade from ambient to it.
+        function startLevelAudio(fallbackAudio) {
+          if (!window.Archive19Audio) return;
+          var src;
+          if (fallbackAudio && fallbackAudio.url) {
+            // Missing level (R3): proxied stock track from Drive `missing/`.
+            src = fallbackAudio.url;
+          } else {
+            // Existing level: per-theme local static track.
+            src = "/static/audio/" + theme + "/level_" + levelId + ".mp3";
+          }
+          window.Archive19Audio.crossfadeToLevel(src);
+        }
+
+        // Seed the ambient channel so the crossfade has something to wind down
+        // (it carries over visually/aurally from the landing where possible).
+        if (window.Archive19Audio) {
+          window.Archive19Audio.playAmbient(theme);
+        }
+
+        fetch("/api/levels/" + levelId + "/photos", {
+          headers: { Accept: "application/json" },
+        })
+          .then(function (resp) {
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            return resp.json();
+          })
+          .then(function (data) {
+            renderImages(data.images);
+            startLevelAudio(data.fallback_audio);
+          })
+          .catch(function () {
+            showMessage("Could not load this level's content right now.");
+            // Still attempt audio for an existing level (no fallback known).
+            if (ssrAvailable) startLevelAudio(null);
+          });
+      })();
+    </script>
+  </body>
+</html>
