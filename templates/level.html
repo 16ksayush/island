@@ -55,14 +55,33 @@
 
       <main class="level-stage layer">
         <div
-          id="gallery"
-          class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-          aria-live="polite"
-          aria-busy="true"
+          id="slideshow"
+          class="slideshow"
+          aria-roledescription="carousel"
+          aria-label="Level {{ level_id }} images"
         >
-          <div class="col-span-full flex justify-center py-16" id="loading">
-            <span class="spinner" role="status" aria-label="Loading images"></span>
+          <div id="track" class="slide-track" aria-live="polite" aria-busy="true">
+            <div class="slide-loading" id="loading">
+              <span class="spinner" role="status" aria-label="Loading images"></span>
+            </div>
           </div>
+
+          <button
+            id="slide-prev"
+            type="button"
+            class="slide-nav slide-prev"
+            aria-label="Previous image"
+            hidden
+          >‹</button>
+          <button
+            id="slide-next"
+            type="button"
+            class="slide-nav slide-next"
+            aria-label="Next image"
+            hidden
+          >›</button>
+
+          <div id="slide-dots" class="slide-dots" role="tablist" aria-label="Select image"></div>
         </div>
       </main>
 
@@ -79,21 +98,54 @@
         var levelId = {{ level_id | tojson }};
         var ssrAvailable = {{ available | tojson }};
 
-        var gallery = document.getElementById("gallery");
+        var track = document.getElementById("track");
         var loading = document.getElementById("loading");
+        var prevBtn = document.getElementById("slide-prev");
+        var nextBtn = document.getElementById("slide-next");
+        var dotsWrap = document.getElementById("slide-dots");
+
+        var SLIDE_DELAY = 3000; // slow slideshow: 3s per slide
+        var slides = [];
+        var current = 0;
+        var timer = null;
 
         function clearLoading() {
-          gallery.setAttribute("aria-busy", "false");
-          if (loading) loading.remove();
+          track.setAttribute("aria-busy", "false");
+          if (loading) { loading.remove(); loading = null; }
         }
 
         function showMessage(msg) {
           clearLoading();
           var p = document.createElement("p");
-          p.className = "col-span-full muted text-center py-10";
+          p.className = "slide-message muted text-center py-10";
           p.textContent = msg;
-          gallery.appendChild(p);
+          track.appendChild(p);
         }
+
+        function updateDots() {
+          for (var d = 0; d < dotsWrap.children.length; d++) {
+            dotsWrap.children[d].setAttribute(
+              "aria-selected", d === current ? "true" : "false"
+            );
+          }
+        }
+
+        // Scroll the active slide into view (the track is also free-scrollable).
+        function goTo(i) {
+          if (!slides.length) return;
+          current = (i + slides.length) % slides.length; // wrap around
+          track.scrollTo({ left: slides[current].offsetLeft, behavior: "smooth" });
+          updateDots();
+        }
+
+        function startAuto() {
+          if (slides.length < 2 || timer) return;
+          timer = setInterval(function () { goTo(current + 1); }, SLIDE_DELAY);
+        }
+        function stopAuto() {
+          if (timer) { clearInterval(timer); timer = null; }
+        }
+        function restartAuto() { stopAuto(); startAuto(); }
 
         function renderImages(images) {
           clearLoading();
@@ -104,15 +156,69 @@
           images.forEach(function (img, idx) {
             // SECURITY: img.url is a backend-proxied /api/levels/.../media/...
             // path. We never touch a Drive URL or key client-side.
+            var fig = document.createElement("figure");
+            fig.className = "slide";
             var el = document.createElement("img");
-            el.className = "gallery-img";
-            el.loading = "lazy";
+            el.className = "slide-img";
+            // Eager preload: a level holds only a handful of images, so load
+            // them all up front (no lazy gate) and decode off the main thread.
+            // This keeps the 3s auto-advance snappy — the next slide is already
+            // in cache by the time the timer fires.
+            el.loading = "eager";
+            el.decoding = "async";
+            el.fetchPriority = idx === 0 ? "high" : "auto";
             el.src = img.url;
             el.alt =
               (theme === "sea" ? "Island" : "Room") +
               " " + levelId + " — image " + (idx + 1);
-            gallery.appendChild(el);
+            fig.appendChild(el);
+            track.appendChild(fig);
+            slides.push(fig);
+
+            var dot = document.createElement("button");
+            dot.type = "button";
+            dot.className = "slide-dot";
+            dot.setAttribute("role", "tab");
+            dot.setAttribute("aria-label", "Go to image " + (idx + 1));
+            dot.addEventListener("click", function () {
+              goTo(idx);
+              restartAuto();
+            });
+            dotsWrap.appendChild(dot);
           });
+
+          if (slides.length > 1) {
+            prevBtn.hidden = false;
+            nextBtn.hidden = false;
+            prevBtn.addEventListener("click", function () { goTo(current - 1); restartAuto(); });
+            nextBtn.addEventListener("click", function () { goTo(current + 1); restartAuto(); });
+
+            // Keep the dots in sync when the user manually scrolls/swipes.
+            var scrollDebounce = null;
+            track.addEventListener("scroll", function () {
+              if (scrollDebounce) clearTimeout(scrollDebounce);
+              scrollDebounce = setTimeout(function () {
+                var nearest = 0, best = Infinity;
+                for (var s = 0; s < slides.length; s++) {
+                  var dist = Math.abs(slides[s].offsetLeft - track.scrollLeft);
+                  if (dist < best) { best = dist; nearest = s; }
+                }
+                current = nearest;
+                updateDots();
+              }, 120);
+            });
+
+            // Pause auto-advance while the visitor is interacting.
+            track.addEventListener("pointerenter", stopAuto);
+            track.addEventListener("pointerleave", startAuto);
+            track.addEventListener("focusin", stopAuto);
+            track.addEventListener("focusout", startAuto);
+          } else {
+            dotsWrap.hidden = true;
+          }
+
+          updateDots();
+          startAuto();
         }
 
         // Decide the level audio source, then crossfade from ambient to it.

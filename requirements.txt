@@ -11,6 +11,7 @@ uvicorn[standard]==0.39.0
 starlette==0.49.3
 jinja2==3.1.6
 httpx==0.28.1
+python-dotenv==1.2.1   # auto-load local .env (no-op in prod/CI; see app/main.py)
 
 # Test (T6b — backend suite, Drive fully mocked, hermetic/offline)
 pytest==8.3.4

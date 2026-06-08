@@ -7,9 +7,10 @@ Implements docs/ARCHITECTURE.md §3 / §4 / §4.1:
 - JSON API: ``/api/levels`` (id + availability), ``/api/levels/{id}/photos``
   (proxied image refs + fallback audio), and ``/api/refresh`` (rebuild the
   discovery cache — R2).
-- Media proxy ``/api/levels/{id}/media/{file_id}`` streams Drive bytes via a
-  ``StreamingResponse`` echoing the upstream Content-Type (R6) AFTER validating
-  the file id is in scope for the level (R1).
+- Media proxy ``/api/levels/{id}/media/{file_id}`` returns Drive bytes (served
+  from an in-memory LRU byte cache when warm) echoing the upstream Content-Type
+  (R6) AFTER validating the file id is in scope for the level (R1), with
+  browser-cache headers (immutable + ETag) since file ids are immutable.
 
 Security: the Drive API key never reaches the client — only ``file_id`` values
 and proxied media URLs do. The app imports and starts even when GD_API_KEY /
@@ -22,8 +23,8 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -36,6 +37,19 @@ logger = logging.getLogger("archive19.main")
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
+
+# --- Local .env auto-load (convenience for local dev only) -----------------
+# Loads GD_API_KEY / GD_ROOT_FOLDER from a repo-root .env so `uvicorn app.main:app`
+# works without a manual `export`. override=False means real environment vars
+# (Render dashboard, CI dummies, an exported shell var) always take precedence,
+# and a missing .env (e.g. in CI/prod) is a silent no-op. python-dotenv is
+# optional — the app still runs on real env vars if it isn't installed.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(BASE_DIR / ".env", override=False)
+except ImportError:
+    pass
 
 DEFAULT_THEME = "horror"  # D3
 VALID_THEMES = {"horror", "sea"}
@@ -154,33 +168,42 @@ async def level_photos(level_id: int):
 
 @app.get("/api/levels/{level_id}/media/{file_id}")
 async def media_proxy(level_id: int, file_id: str):
-    """Stream a single Drive file's bytes, scoped to ``level_id`` (R1/R6).
+    """Return a single Drive file's bytes, scoped to ``level_id`` (R1/R6).
 
     The file id MUST belong to the level's folder or ``missing/`` (validated in
-    ``resolve_media``) — otherwise 404, no open proxy. The response Content-Type
-    mirrors the upstream Drive value (image/* vs audio/mpeg).
+    ``resolve_media`` against the cached scope set) — otherwise 404, no open
+    proxy. Bytes are served from the in-memory media cache when warm, else
+    fetched once from Drive and cached. The response Content-Type mirrors the
+    upstream Drive value (R6: image/* vs audio/mpeg, never hardcoded).
+
+    Drive file ids are immutable, so the response is marked cacheable for a day
+    (``Cache-Control: public, max-age=86400, immutable``) with the ``file_id``
+    as a strong ``ETag`` to let browsers revalidate cheaply.
     """
     try:
-        stream = await drive_service.resolve_media(level_id, file_id)
+        result = await drive_service.resolve_media(level_id, file_id)
     except DriveError:
         return JSONResponse({"detail": "Upstream Drive error."}, status_code=502)
 
-    if stream is None:
+    if result is None:
         return JSONResponse({"detail": "Media not found."}, status_code=404)
 
-    async def _body():
-        try:
-            async for chunk in stream.body:
-                yield chunk
-        finally:
-            await stream.aclose()
-
-    return StreamingResponse(_body(), media_type=stream.content_type)
+    content_type, body = result
+    headers = {
+        "Cache-Control": "public, max-age=86400, immutable",
+        "ETag": f'"{file_id}"',
+    }
+    return Response(content=body, media_type=content_type, headers=headers)
 
 
 @app.post("/api/refresh")
 async def refresh():
-    """Manually rebuild the discovery cache without a redeploy (R2)."""
+    """Manually rebuild the discovery cache without a redeploy (R2).
+
+    A forced rediscovery also rebuilds the scope/list cache and clears the
+    in-memory media byte cache (both done inside ``discover_levels(force=True)``)
+    so a Drive change takes full effect — no stale bytes or stale scope.
+    """
     cache = await drive_service.discover_levels(force=True)
     return {
         "ready": cache.ready,

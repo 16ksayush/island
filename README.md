@@ -21,6 +21,7 @@ An interactive web gallery with a **dynamically-scaled** number of levels (0 →
 - **Secure image proxy** — level images are fetched from Google Drive and streamed as bytes by the backend; the browser **never** receives the Google Drive API key.
 - **Missing-level fallback** — if a numbered folder is absent, the backend serves 1 random image **and** 1 random audio track from the Drive `missing/` folder.
 - **Audio crossfade engine** — landing-page global ambient fades out while a per-level track fades in (and back), auto-play-safe.
+- **Fast by default** — images are cached in-memory on the server (bounded LRU) and sent with long-lived `Cache-Control`/`ETag` headers so the browser caches them too; the level page shows a slow, scrollable **slideshow** (3s/slide) and the landing page **prefetches** all level images in the background, so navigation is near-instant after first load (~340× faster on a cache hit). The per-level scope check is served from cache, so serving an image no longer re-lists Drive.
 
 ---
 
@@ -126,6 +127,10 @@ uvicorn app.main:app --reload
 ```
 
 Open http://localhost:8000.
+
+> The repo-root `.env` is **auto-loaded** at startup (via `python-dotenv`) — no manual
+> `export` needed. Real environment variables always take precedence over `.env`, and a
+> missing `.env` is a no-op (so CI and production, which set vars on the host, are unaffected).
 
 > The app **starts and serves even with no `GD_API_KEY` / `GD_ROOT_FOLDER`** — level discovery simply degrades to an empty gallery (`/api/levels` returns `{"levels": []}`) and the page still renders with its theme. Set both env vars to load real Drive content.
 

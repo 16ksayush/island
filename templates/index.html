@@ -103,5 +103,81 @@
         }
       })();
     </script>
+    <script>
+      // Background image prefetch: warm the browser cache for AVAILABLE levels
+      // so navigating into /level/{id} feels instant (the backend sends
+      // long-lived Cache-Control headers, so these images are reused on click).
+      //
+      // Non-blocking: scheduled via requestIdleCallback (setTimeout fallback)
+      // so it never delays first paint or the landing ambient audio. Levels are
+      // walked with a small concurrency limit, and every step fails silently.
+      (function () {
+        // SSR-rendered list of AVAILABLE level ids only. Unavailable levels are
+        // skipped — the server re-rolls fallback content for them on demand, so
+        // there is nothing stable to pre-warm.
+        var levelIds = [
+          {% for lvl in levels %}{% if lvl.available %}{{ lvl.id | tojson }},{% endif %}{% endfor %}
+        ];
+        if (!levelIds.length) return;
+
+        var MAX_CONCURRENCY = 2; // gentle: at most 2 levels in flight at once
+
+        // Warm one image URL into the cache. We only ever consume the backend
+        // `url` field (a /api/levels/.../media/... path) — never a Drive URL.
+        function warmImage(url) {
+          if (typeof url !== "string" || url.charAt(0) !== "/") return;
+          try {
+            var img = new Image();
+            img.decoding = "async";
+            img.fetchPriority = "low";
+            img.src = url; // set as a property; no innerHTML, no markup parsing
+          } catch (e) {
+            /* fail silently */
+          }
+        }
+
+        // Fetch one level's photo manifest, then warm each returned image.
+        function prefetchLevel(id) {
+          return fetch("/api/levels/" + encodeURIComponent(id) + "/photos", {
+            headers: { Accept: "application/json" },
+          })
+            .then(function (resp) {
+              return resp.ok ? resp.json() : null;
+            })
+            .then(function (data) {
+              if (!data || !Array.isArray(data.images)) return;
+              data.images.forEach(function (image) {
+                if (image && image.url) warmImage(image.url);
+              });
+            })
+            .catch(function () {
+              /* fail silently — prefetch is best-effort */
+            });
+        }
+
+        // Sequential worker pool: each worker drains the shared id queue, so at
+        // most MAX_CONCURRENCY requests are ever outstanding.
+        function runPrefetch() {
+          var queue = levelIds.slice();
+          function worker() {
+            if (!queue.length) return Promise.resolve();
+            return prefetchLevel(queue.shift()).then(worker);
+          }
+          var workers = [];
+          for (var i = 0; i < Math.min(MAX_CONCURRENCY, queue.length); i++) {
+            workers.push(worker());
+          }
+          // Swallow any aggregate rejection defensively.
+          Promise.all(workers).catch(function () {});
+        }
+
+        // Defer to idle time so first paint + audio start come first.
+        if (typeof window.requestIdleCallback === "function") {
+          window.requestIdleCallback(runPrefetch, { timeout: 4000 });
+        } else {
+          window.setTimeout(runPrefetch, 1200);
+        }
+      })();
+    </script>
   </body>
 </html>

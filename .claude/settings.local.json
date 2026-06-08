@@ -34,7 +34,31 @@
       "Bash(git check-ignore *)",
       "Bash(grep -E '^\\\\.env$|\\\\.venv')",
       "Bash(.venv/bin/python -c \"import yaml,sys; yaml.safe_load\\(open\\('.github/workflows/ci.yml'\\)\\); print\\('ci.yml: valid YAML'\\)\")",
-      "Bash(python3 -c \"import yaml; yaml.safe_load\\(open\\('.github/workflows/ci.yml'\\)\\); print\\('ci.yml: valid YAML'\\)\")"
+      "Bash(python3 -c \"import yaml; yaml.safe_load\\(open\\('.github/workflows/ci.yml'\\)\\); print\\('ci.yml: valid YAML'\\)\")",
+      "Bash(git commit -q -m ' *)",
+      "Bash(gh run *)",
+      "Bash(gh api *)",
+      "Bash(.venv/bin/python -)",
+      "Bash(lsof -nP -iTCP:8000 -sTCP:LISTEN)",
+      "Bash(.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080)",
+      "Bash(curl -s \"http://127.0.0.1:8080/api/levels\")",
+      "Bash(break)",
+      "Bash(curl -s -w \"  [HTTP %{http_code}]\\\\n\" \"http://127.0.0.1:8080/api/levels\" -o /dev/null)",
+      "Bash(curl -s -w \"[HTTP %{http_code}]\\\\n\" \"http://127.0.0.1:8080/\" -o /dev/null)",
+      "Bash(.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8123)",
+      "Bash(curl -s \"http://127.0.0.1:8123/api/levels\")",
+      "Bash(curl -s -w \" [HTTP %{http_code}]\\\\n\" \"http://127.0.0.1:8123/\" -o /dev/null)",
+      "Bash(curl -s \"http://127.0.0.1:8123/api/levels/8/photos\")",
+      "Bash(curl -s \"http://127.0.0.1:8123/level/8\")",
+      "Bash(lsof -nP -iTCP:8000 -iTCP:8080 -iTCP:8123 -sTCP:LISTEN)",
+      "Bash(python -c \"import fastapi\")",
+      "Bash(.venv/bin/python -m py_compile app/main.py app/drive_service.py)",
+      "Bash(.venv/bin/python -c \"import app.main; print\\('app.main imports cleanly'\\)\")",
+      "Bash(grep -iE \"\\\\.env$|secret|\\\\.key|credential\")",
+      "Bash(ls && echo \"---REQ---\" && cat docs/REQUIREMENTS.md 2>/dev/null | head -120 && echo \"---REQS-DEV---\" && cat requirements*.txt 2>/dev/null && echo \"---VENV---\" && ls .venv/bin/python 2>/dev/null)",
+      "Read(//Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/**)",
+      "Bash(.venv/bin/python -m pytest tests/test_cache.py -q)",
+      "Bash(.venv/bin/python -m pytest tests/test_cache.py -v)"
     ]
   }
 }
