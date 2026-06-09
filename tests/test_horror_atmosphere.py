@@ -120,18 +120,19 @@ def test_decorative_layer_has_no_interactive_elements(client, path):
 #     alter the hotspot/toggle/slideshow contract.)
 # ===========================================================================
 def test_grid_tile_markup_contract_unchanged(client):
-    # Superseded by the M9 map redesign: the door GRID (`class="level-tile"` +
-    # `badge-unavailable` "Lost" badge) is gone, replaced by 19 `.map-hotspot`
-    # anchors. Converted to assert the equivalent Horror-map availability
-    # contract so the invariant (available 1/2/8 vs sealed rest) keeps coverage.
+    # Migrated (M15): the M9 `.map-hotspot` raster overlay was retired
+    # (ARCHITECTURE §15.7). Navigation is now the SVG `.nav-node` family (+ the
+    # reflow `.nav-list`). Assert the equivalent Horror availability contract on
+    # nav-node so the invariant (available 1/2/8 vs sealed rest) keeps coverage.
     html = client.get("/").text
-    # Available hotspots keep the bare `class="map-hotspot" href="/level/{id}"`.
-    available_hotspots = re.findall(
-        r'<a\s+class="map-hotspot"\s+href="/level/(\d+)"', html
+    # Available nodes keep the bare `class="nav-node" href="/level/{id}"`.
+    available_nodes = re.findall(
+        r'<a\s+class="nav-node"\s+href="/level/(\d+)"', html
     )
-    assert sorted(int(x) for x in available_hotspots) == [1, 2, 8]
-    # Sealed hotspots carry is-sealed + the "(sealed — fallback content)" label.
-    assert html.count("(sealed — fallback content)") == 16  # levels 0,3-7,9-18
+    assert sorted(int(x) for x in available_nodes) == [1, 2, 8]
+    # Sealed levels carry --sealed + the "(sealed — fallback content)" label, in
+    # BOTH the nav-node and nav-list families -> 16 sealed * 2 = 32 in the HTML.
+    assert html.count("(sealed — fallback content)") == 32  # levels 0,3-7,9-18 x2
 
 
 def test_toggle_and_slideshow_js_intact(client):

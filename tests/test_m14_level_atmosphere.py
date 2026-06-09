@@ -237,11 +237,14 @@ def test_frame_corners_are_inert(client, theme):
 
 
 # ===========================================================================
-# 6. Cache-bust: style.css?v=7 on BOTH the level page and the index page.
+# 6. Cache-bust: style.css?v=8 on BOTH the level page and the index page.
+#    MIGRATED (M15): the hybrid landing redesign bumped ?v=7 -> ?v=8 on BOTH
+#    templates/index.html AND templates/level.html (ARCHITECTURE §15.7). The
+#    level-page contract is otherwise unchanged by M15.
 # ===========================================================================
 @pytest.mark.parametrize("path", ["/", f"/level/{AVAILABLE_LEVEL}"])
-def test_style_css_is_v7_on_level_and_index(client, path):
+def test_style_css_is_v8_on_level_and_index(client, path):
     html = client.get(path).text
-    assert '<link rel="stylesheet" href="/static/style.css?v=7" />' in html, (
-        f"expected style.css?v=7 on {path}; A2 sign-off bumped ?v=6 -> ?v=7"
+    assert '<link rel="stylesheet" href="/static/style.css?v=8" />' in html, (
+        f"expected style.css?v=8 on {path}; M15 bumped ?v=7 -> ?v=8"
     )

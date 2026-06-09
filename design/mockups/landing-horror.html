@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<!--
+  M15 mockup — HORROR landing (default theme).
+  Demonstrates: the desktop/tablet inline-SVG .nav-map "corridor of doors"
+  (one viewBox="0 0 1600 900", 19 in-viewBox .nav-node <a>s) that TRUE-REFLOWS
+  to the phone .nav-list (19 ≥44px rows) at the single 768px boundary — RESIZE
+  the window to feel it. The theme toggle (top-right) swaps .theme-horror <->
+  .theme-sea on <html> so both realities are felt from this one file.
+
+  Standalone / backend-free: inline CSS + Tailwind CDN + a tiny toggle script.
+  Look/feel artifact only — the real build moves the CSS into theme-scoped
+  blocks in static/style.css and keeps theme.js / audio / prefetch.
+-->
+<html lang="en" class="theme-horror">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M15 mockup — Tour-de-Anshika landing (Horror)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="m15-landing.css" />
+  </head>
+  <body class="theme-horror min-h-screen">
+    <!-- z-0 painted backdrop (N7 HYBRID): the EXISTING detailed map, REUSED as
+         ambient painterly depth behind the rich SVG. cover-cropped, decorative,
+         inert. Real build: theme-conditional CSS background-image + active-theme
+         <link rel=preload> keyed off the SSR cookie (§15.4). -->
+    <div class="nav-backdrop" aria-hidden="true"></div>
+
+    <!-- z-1 atmosphere = themed SCRIM + vignette + fog (legibility over the painting) -->
+    <div class="atmosphere" aria-hidden="true">
+      <!-- Horror: drifting ghosts + twinkles (reduced set for the mockup) -->
+      <div class="horror-ambient" aria-hidden="true">
+        <svg class="amb-ghost amb-ghost--0" viewBox="0 0 50 64" focusable="false" aria-hidden="true"><path d="M25 2C13 2 6 11 6 24v34l5-5 5 5 4-5 5 5 5-5 4 5 5-5V24C44 11 37 2 25 2z"/><circle cx="19" cy="25" r="2.6"/><circle cx="31" cy="25" r="2.6"/></svg>
+        <svg class="amb-ghost amb-ghost--1" viewBox="0 0 50 64" focusable="false" aria-hidden="true"><path d="M25 2C13 2 6 11 6 24v34l5-5 5 5 4-5 5 5 5-5 4 5 5-5V24C44 11 37 2 25 2z"/><circle cx="19" cy="25" r="2.6"/><circle cx="31" cy="25" r="2.6"/></svg>
+        <span class="amb-twinkle amb-twinkle--0"></span>
+        <span class="amb-twinkle amb-twinkle--1"></span>
+        <span class="amb-twinkle amb-twinkle--2"></span>
+        <span class="amb-twinkle amb-twinkle--3"></span>
+      </div>
+    </div>
+
+    <!-- Sea ambient (only painted when .theme-sea is toggled on; reused leaf set) -->
+    <div class="atmosphere atmosphere--sea" aria-hidden="true">
+      <div class="sea-ambient" aria-hidden="true">
+        <svg class="amb-cloud amb-cloud--0" viewBox="0 0 100 44" focusable="false" aria-hidden="true"><path d="M20 38c-9 0-16-6-16-14 0-7 6-13 14-13 2-7 9-11 16-11 9 0 16 6 18 14 7 0 13 5 13 12 0 7-6 12-14 12z" fill="#fff"/></svg>
+        <svg class="amb-cloud amb-cloud--1" viewBox="0 0 100 44" focusable="false" aria-hidden="true"><path d="M20 38c-9 0-16-6-16-14 0-7 6-13 14-13 2-7 9-11 16-11 9 0 16 6 18 14 7 0 13 5 13 12 0 7-6 12-14 12z" fill="#fff"/></svg>
+        <svg class="amb-bird amb-bird--0" viewBox="0 0 40 16" focusable="false" aria-hidden="true"><path d="M2 12C8 4 14 4 20 9c6-5 12-5 18 3-6-3-11-2-18 3-7-5-12-6-18-3z" fill="#3a5a72"/></svg>
+        <svg class="amb-bird amb-bird--1" viewBox="0 0 40 16" focusable="false" aria-hidden="true"><path d="M2 12C8 4 14 4 20 9c6-5 12-5 18 3-6-3-11-2-18 3-7-5-12-6-18-3z" fill="#3a5a72"/></svg>
+      </div>
+    </div>
+
+    <!-- z-1 interactive layer -->
+    <div class="layer horror-landing">
+      <h1 class="sr-only" data-horror="Tour-de-Anshika — choose a destination" data-sea="Tour-de-Anshika — choose an island">Tour-de-Anshika — choose a destination</h1>
+
+      <a href="#" class="brand-logo" aria-label="Tour-de-Anshika — home">
+        <span class="app-logo">tOUR-de-Anshika</span>
+      </a>
+
+      <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Toggle between Horror and Sea themes">
+        <span class="toggle-icon" aria-hidden="true">🌊</span>
+        <span class="toggle-label">Sail to the Sea</span>
+      </button>
+
+      <!-- ========================= DESKTOP/TABLET: .nav-map ===================
+           ONE <svg viewBox="0 0 1600 900">. The .nav-scene <g> is the decorative
+           high-fidelity scene; the 19 .nav-node <a>s live in the SAME viewBox in
+           id order 0..18. Shown ≥768px, display:none below. -->
+      <svg class="nav-map" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet"
+           role="navigation"
+           aria-label="Choose a door — a corridor of nineteen doors">
+
+        <!-- ===== Horror scene (decorative, ELEVATED) =====
+             N7 HYBRID: this SVG is LAYERED OVER the painted backdrop. The wall/
+             floor fields are kept partly translucent + use mix-blend-mode so the
+             painting shows THROUGH non-focal areas (painterly depth), while doors,
+             sconces, moonlight and nodes stay crisp/opaque and LIFT off the
+             painting. Real SVG craft: feTurbulence canvas grain, feGaussianBlur
+             fog/glow, feDropShadow door lift, feSpecularLighting sconce sheen. -->
+        <g class="nav-scene scene-horror-only" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="h-wall" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#121a2e"/><stop offset="1" stop-color="#0a0e1a"/>
+            </linearGradient>
+            <linearGradient id="h-floor" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#0d1322"/><stop offset="1" stop-color="#05070d"/>
+            </linearGradient>
+            <radialGradient id="h-moon" cx="50%" cy="38%" r="60%">
+              <stop offset="0" stop-color="#cfe0ff" stop-opacity="0.95"/>
+              <stop offset="55%" stop-color="#9fb6e0" stop-opacity="0.30"/>
+              <stop offset="100%" stop-color="#9fb6e0" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="h-sconce" cx="50%" cy="50%" r="50%">
+              <stop offset="0" stop-color="#ffd27a" stop-opacity="0.95"/>
+              <stop offset="100%" stop-color="#ffb000" stop-opacity="0"/>
+            </radialGradient>
+            <!-- soft fog blur -->
+            <filter id="h-fog" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="16"/>
+            </filter>
+            <!-- canvas/grain texture (feTurbulence) painted faintly over the scene -->
+            <filter id="h-grain" x="0" y="0" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" result="n"/>
+              <feColorMatrix in="n" type="matrix"
+                values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0"/>
+            </filter>
+            <!-- cobweb-fine wisp blur -->
+            <filter id="h-web" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="0.6"/>
+            </filter>
+            <!-- door LIFT (feDropShadow) so doors sit ABOVE the painting -->
+            <filter id="h-lift" x="-40%" y="-40%" width="180%" height="180%">
+              <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#000" flood-opacity="0.7"/>
+            </filter>
+            <!-- sconce sheen (feSpecularLighting) for a metallic glint -->
+            <filter id="h-sheen" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur"/>
+              <feSpecularLighting in="blur" surfaceScale="3" specularConstant="0.9" specularExponent="18"
+                                  lighting-color="#ffe6ad" result="spec">
+                <fePointLight x="250" y="240" z="120"/>
+              </feSpecularLighting>
+              <feComposite in="spec" in2="SourceAlpha" operator="in" result="specClip"/>
+              <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="specClip"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- back wall + ceiling field (translucent + multiply so the painting reads through) -->
+          <rect x="0" y="0" width="1600" height="640" fill="url(#h-wall)" opacity="0.62" style="mix-blend-mode:multiply"/>
+          <!-- floor in perspective (translucent) -->
+          <polygon points="0,640 1600,640 1600,900 0,900" fill="url(#h-floor)" opacity="0.66" style="mix-blend-mode:multiply"/>
+          <!-- receding floor boards (vanishing point ~ 800,470) -->
+          <g stroke="#1a2233" stroke-width="2" opacity="0.5">
+            <line x1="800" y1="470" x2="-200" y2="900"/>
+            <line x1="800" y1="470" x2="250" y2="900"/>
+            <line x1="800" y1="470" x2="560" y2="900"/>
+            <line x1="800" y1="470" x2="1040" y2="900"/>
+            <line x1="800" y1="470" x2="1350" y2="900"/>
+            <line x1="800" y1="470" x2="1800" y2="900"/>
+          </g>
+          <!-- ceiling perspective lines -->
+          <g stroke="#0e1626" stroke-width="2" opacity="0.4">
+            <line x1="800" y1="470" x2="-200" y2="0"/>
+            <line x1="800" y1="470" x2="1800" y2="0"/>
+          </g>
+          <!-- moonlight shaft from the high windows, soft-blurred -->
+          <polygon points="640,0 760,0 880,640 540,640" fill="#cfe0ff" opacity="0.10" filter="url(#h-fog)"/>
+          <!-- far doorway + moonlit glow (the focal vanishing point) -->
+          <rect x="735" y="360" width="130" height="220" rx="6" fill="#070b15"/>
+          <rect x="700" y="300" width="200" height="320" rx="8" fill="url(#h-moon)"/>
+          <!-- low drifting fog near the floor -->
+          <ellipse cx="500" cy="720" rx="520" ry="70" fill="#9fb6e0" opacity="0.12" filter="url(#h-fog)"/>
+          <ellipse cx="1150" cy="780" rx="560" ry="80" fill="#9fb6e0" opacity="0.10" filter="url(#h-fog)"/>
+          <!-- corner cobwebs (top corners), soft + faint -->
+          <g stroke="#cfd8ea" stroke-width="1" fill="none" opacity="0.18" filter="url(#h-web)">
+            <path d="M0 0 L120 120 M0 0 L150 70 M0 0 L70 150"/>
+            <path d="M40 0 Q90 60 0 90 M90 0 Q150 80 30 140"/>
+            <g transform="translate(1600,0) scale(-1,1)">
+              <path d="M0 0 L120 120 M0 0 L150 70 M0 0 L70 150"/>
+              <path d="M40 0 Q90 60 0 90 M90 0 Q150 80 30 140"/>
+            </g>
+          </g>
+          <!-- wall sconces with flame glow (slow breathe; frozen on reduce) + metal sheen -->
+          <g class="scene-flicker">
+            <circle cx="250" cy="300" r="64" fill="url(#h-sconce)"/>
+            <circle cx="1350" cy="300" r="64" fill="url(#h-sconce)"/>
+          </g>
+          <g filter="url(#h-sheen)">
+            <rect x="244" y="296" width="12" height="40" rx="3" fill="#4a3a22"/>
+            <rect x="1344" y="296" width="12" height="40" rx="3" fill="#4a3a22"/>
+          </g>
+          <!-- faint corner-shadow claws at the edges (never under a door) -->
+          <path d="M0 470c40-8 70-22 100-46 8 50 9 96 5 142-4-32-12-60-26-86 22 36 33 76 33 120-10-36-26-68-48-94 14 40 22 80 18 120-14-44-34-80-58-112 4 44 4 84-4 124C-8 660-8 558 0 470z" fill="#02040a" opacity="0.5"/>
+          <g transform="translate(1600,0) scale(-1,1)"><path d="M0 470c40-8 70-22 100-46 8 50 9 96 5 142-4-32-12-60-26-86 22 36 33 76 33 120-10-36-26-68-48-94 14 40 22 80 18 120-14-44-34-80-58-112 4 44 4 84-4 124C-8 660-8 558 0 470z" fill="#02040a" opacity="0.5"/></g>
+          <!-- faint canvas grain over the whole scene (feTurbulence) -->
+          <rect x="0" y="0" width="1600" height="900" filter="url(#h-grain)" opacity="0.5" style="mix-blend-mode:overlay"/>
+        </g>
+
+        <!-- ===== 19 interactive nav-nodes (doors), id 0..18, document order =====
+             Each <a> wraps a decorative door glyph + transparent hit rect +
+             always-visible number label. Positioned along both walls in two
+             receding ranks. .nav-node--sealed marks id not in available set.
+             Mock available set = {1,2,8,9,10,11,12,13,14,15,16,17,18} (0,3-7 sealed,
+             matching the confirmed asset reality 1,2,8-18 present). -->
+        <g class="nav-nodes scene-horror-only">
+          <!-- back rank (far, smaller) row y~330, ids 0-4 -->
+          <a class="nav-node nav-node--sealed" href="#/level/0" aria-label="Level 0 (sealed — fallback content)">
+            <rect class="nav-node-hit" x="386" y="300" width="96" height="150"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="398" y="306" width="72" height="138" rx="5"/>
+              <rect class="door-panel" x="404" y="312" width="60" height="58" rx="3"/>
+              <rect class="door-panel" x="404" y="378" width="60" height="58" rx="3"/>
+              <circle class="door-knob" cx="458" cy="376" r="3.5"/>
+            </g>
+            <text class="nav-node-label" x="434" y="430">0</text>
+          </a>
+          <a class="nav-node" href="#/level/1" aria-label="Level 1">
+            <rect class="nav-node-hit" x="540" y="312" width="92" height="142"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="551" y="318" width="70" height="130" rx="5"/>
+              <rect class="door-panel" x="557" y="324" width="58" height="54" rx="3"/>
+              <rect class="door-panel" x="557" y="386" width="58" height="54" rx="3"/>
+              <circle class="door-knob" cx="609" cy="384" r="3.5"/>
+            </g>
+            <text class="nav-node-label" x="586" y="434">1</text>
+          </a>
+          <a class="nav-node" href="#/level/2" aria-label="Level 2">
+            <rect class="nav-node-hit" x="694" y="320" width="88" height="134"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="704" y="326" width="68" height="122" rx="5"/>
+              <rect class="door-panel" x="710" y="332" width="56" height="50" rx="3"/>
+              <rect class="door-panel" x="710" y="390" width="56" height="50" rx="3"/>
+              <circle class="door-knob" cx="760" cy="388" r="3.5"/>
+            </g>
+            <text class="nav-node-label" x="738" y="436">2</text>
+          </a>
+          <a class="nav-node nav-node--sealed" href="#/level/3" aria-label="Level 3 (sealed — fallback content)">
+            <rect class="nav-node-hit" x="838" y="320" width="88" height="134"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="848" y="326" width="68" height="122" rx="5"/>
+              <rect class="door-panel" x="854" y="332" width="56" height="50" rx="3"/>
+              <rect class="door-panel" x="854" y="390" width="56" height="50" rx="3"/>
+              <line class="door-board" x1="846" y1="360" x2="918" y2="380"/>
+              <line class="door-board" x1="846" y1="400" x2="918" y2="386"/>
+            </g>
+            <text class="nav-node-label" x="882" y="436">3</text>
+          </a>
+          <a class="nav-node nav-node--sealed" href="#/level/4" aria-label="Level 4 (sealed — fallback content)">
+            <rect class="nav-node-hit" x="978" y="312" width="92" height="142"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="989" y="318" width="70" height="130" rx="5"/>
+              <rect class="door-panel" x="995" y="324" width="58" height="54" rx="3"/>
+              <rect class="door-panel" x="995" y="386" width="58" height="54" rx="3"/>
+              <line class="door-board" x1="987" y1="356" x2="1061" y2="378"/>
+              <line class="door-board" x1="987" y1="400" x2="1061" y2="384"/>
+            </g>
+            <text class="nav-node-label" x="1024" y="434">4</text>
+          </a>
+
+          <!-- mid rank y~520, ids 5-9 -->
+          <a class="nav-node nav-node--sealed" href="#/level/5" aria-label="Level 5 (sealed — fallback content)">
+            <rect class="nav-node-hit" x="150" y="480" width="120" height="180"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="164" y="486" width="92" height="168" rx="6"/>
+              <rect class="door-panel" x="172" y="494" width="76" height="72" rx="4"/>
+              <rect class="door-panel" x="172" y="576" width="76" height="72" rx="4"/>
+              <line class="door-board" x1="160" y1="540" x2="260" y2="564"/>
+              <line class="door-board" x1="160" y1="600" x2="260" y2="572"/>
+            </g>
+            <text class="nav-node-label" x="210" y="636">5</text>
+          </a>
+          <a class="nav-node nav-node--sealed" href="#/level/6" aria-label="Level 6 (sealed — fallback content)">
+            <rect class="nav-node-hit" x="370" y="486" width="116" height="172"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="383" y="492" width="90" height="160" rx="6"/>
+              <rect class="door-panel" x="391" y="500" width="74" height="68" rx="4"/>
+              <rect class="door-panel" x="391" y="578" width="74" height="68" rx="4"/>
+              <line class="door-board" x1="380" y1="545" x2="476" y2="568"/>
+              <line class="door-board" x1="380" y1="602" x2="476" y2="576"/>
+            </g>
+            <text class="nav-node-label" x="428" y="634">6</text>
+          </a>
+          <a class="nav-node nav-node--sealed" href="#/level/7" aria-label="Level 7 (sealed — fallback content)">
+            <rect class="nav-node-hit" x="1116" y="486" width="116" height="172"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="1129" y="492" width="90" height="160" rx="6"/>
+              <rect class="door-panel" x="1137" y="500" width="74" height="68" rx="4"/>
+              <rect class="door-panel" x="1137" y="578" width="74" height="68" rx="4"/>
+              <line class="door-board" x1="1126" y1="545" x2="1222" y2="568"/>
+              <line class="door-board" x1="1126" y1="602" x2="1222" y2="576"/>
+            </g>
+            <text class="nav-node-label" x="1174" y="634">7</text>
+          </a>
+          <a class="nav-node" href="#/level/8" aria-label="Level 8">
+            <rect class="nav-node-hit" x="1332" y="480" width="120" height="180"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="1346" y="486" width="92" height="168" rx="6"/>
+              <rect class="door-panel" x="1354" y="494" width="76" height="72" rx="4"/>
+              <rect class="door-panel" x="1354" y="576" width="76" height="72" rx="4"/>
+              <circle class="door-knob" cx="1422" cy="572" r="4.5"/>
+            </g>
+            <text class="nav-node-label" x="1392" y="636">8</text>
+          </a>
+          <a class="nav-node" href="#/level/9" aria-label="Level 9">
+            <rect class="nav-node-hit" x="690" y="500" width="96" height="150"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="702" y="506" width="72" height="138" rx="5"/>
+              <rect class="door-panel" x="708" y="512" width="60" height="58" rx="3"/>
+              <rect class="door-panel" x="708" y="578" width="60" height="58" rx="3"/>
+              <circle class="door-knob" cx="762" cy="576" r="3.5"/>
+            </g>
+            <text class="nav-node-label" x="738" y="630">9</text>
+          </a>
+          <a class="nav-node" href="#/level/10" aria-label="Level 10">
+            <rect class="nav-node-hit" x="820" y="500" width="96" height="150"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="832" y="506" width="72" height="138" rx="5"/>
+              <rect class="door-panel" x="838" y="512" width="60" height="58" rx="3"/>
+              <rect class="door-panel" x="838" y="578" width="60" height="58" rx="3"/>
+              <circle class="door-knob" cx="892" cy="576" r="3.5"/>
+            </g>
+            <text class="nav-node-label" x="868" y="630">10</text>
+          </a>
+
+          <!-- front rank y~720, ids 11-18 (largest, nearest) -->
+          <a class="nav-node" href="#/level/11" aria-label="Level 11">
+            <rect class="nav-node-hit" x="120" y="690" width="140" height="200"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="134" y="696" width="112" height="190" rx="7"/>
+              <rect class="door-panel" x="144" y="706" width="92" height="84" rx="4"/>
+              <rect class="door-panel" x="144" y="800" width="92" height="76" rx="4"/>
+              <circle class="door-knob" cx="226" cy="796" r="5.5"/>
+            </g>
+            <text class="nav-node-label" x="190" y="872">11</text>
+          </a>
+          <a class="nav-node" href="#/level/12" aria-label="Level 12">
+            <rect class="nav-node-hit" x="320" y="694" width="136" height="196"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="334" y="700" width="108" height="184" rx="7"/>
+              <rect class="door-panel" x="344" y="710" width="88" height="80" rx="4"/>
+              <rect class="door-panel" x="344" y="800" width="88" height="74" rx="4"/>
+              <circle class="door-knob" cx="422" cy="796" r="5.5"/>
+            </g>
+            <text class="nav-node-label" x="388" y="868">12</text>
+          </a>
+          <a class="nav-node" href="#/level/13" aria-label="Level 13">
+            <rect class="nav-node-hit" x="520" y="700" width="130" height="190"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="534" y="706" width="102" height="178" rx="7"/>
+              <rect class="door-panel" x="544" y="716" width="82" height="78" rx="4"/>
+              <rect class="door-panel" x="544" y="802" width="82" height="72" rx="4"/>
+              <circle class="door-knob" cx="616" cy="798" r="5"/>
+            </g>
+            <text class="nav-node-label" x="585" y="866">13</text>
+          </a>
+          <a class="nav-node" href="#/level/14" aria-label="Level 14">
+            <rect class="nav-node-hit" x="950" y="700" width="130" height="190"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="964" y="706" width="102" height="178" rx="7"/>
+              <rect class="door-panel" x="974" y="716" width="82" height="78" rx="4"/>
+              <rect class="door-panel" x="974" y="802" width="82" height="72" rx="4"/>
+              <circle class="door-knob" cx="1046" cy="798" r="5"/>
+            </g>
+            <text class="nav-node-label" x="1015" y="866">14</text>
+          </a>
+          <a class="nav-node" href="#/level/15" aria-label="Level 15">
+            <rect class="nav-node-hit" x="1150" y="694" width="136" height="196"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="1164" y="700" width="108" height="184" rx="7"/>
+              <rect class="door-panel" x="1174" y="710" width="88" height="80" rx="4"/>
+              <rect class="door-panel" x="1174" y="800" width="88" height="74" rx="4"/>
+              <circle class="door-knob" cx="1252" cy="796" r="5.5"/>
+            </g>
+            <text class="nav-node-label" x="1218" y="868">15</text>
+          </a>
+          <a class="nav-node" href="#/level/16" aria-label="Level 16">
+            <rect class="nav-node-hit" x="1350" y="690" width="140" height="200"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="1364" y="696" width="112" height="190" rx="7"/>
+              <rect class="door-panel" x="1374" y="706" width="92" height="84" rx="4"/>
+              <rect class="door-panel" x="1374" y="800" width="92" height="76" rx="4"/>
+              <circle class="door-knob" cx="1456" cy="796" r="5.5"/>
+            </g>
+            <text class="nav-node-label" x="1420" y="872">16</text>
+          </a>
+          <a class="nav-node" href="#/level/17" aria-label="Level 17">
+            <rect class="nav-node-hit" x="640" y="120" width="92" height="120"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="651" y="126" width="70" height="108" rx="5"/>
+              <rect class="door-panel" x="657" y="132" width="58" height="44" rx="3"/>
+              <rect class="door-panel" x="657" y="184" width="58" height="44" rx="3"/>
+              <circle class="door-knob" cx="709" cy="182" r="3.5"/>
+            </g>
+            <text class="nav-node-label" x="686" y="224">17</text>
+          </a>
+          <a class="nav-node" href="#/level/18" aria-label="Level 18">
+            <rect class="nav-node-hit" x="868" y="120" width="92" height="120"/>
+            <g class="nav-node-glyph nav-node-glyph--door">
+              <rect class="door-frame" x="879" y="126" width="70" height="108" rx="5"/>
+              <rect class="door-panel" x="885" y="132" width="58" height="44" rx="3"/>
+              <rect class="door-panel" x="885" y="184" width="58" height="44" rx="3"/>
+              <circle class="door-knob" cx="937" cy="182" r="3.5"/>
+            </g>
+            <text class="nav-node-label" x="914" y="224">18</text>
+          </a>
+        </g>
+
+        <!-- When toggled to Sea here, the full archipelago SVG scene lives in
+             landing-sea.html. This concise placeholder keeps the map from going
+             blank; the palette, atmosphere, chrome, banner + mobile list still
+             swap so the world-flip is felt. (Mockup-only convenience.) -->
+        <g class="nav-scene-altnote scene-sea-only" aria-hidden="true" focusable="false" style="display:none">
+          <rect x="300" y="330" width="1000" height="240" rx="22" fill="#fffaf0" opacity="0.9" stroke="#e8c98a" stroke-width="3"/>
+          <text x="800" y="430" text-anchor="middle" font-size="44" font-weight="800" fill="#0c4a6e">Sea world active</text>
+          <text x="800" y="492" text-anchor="middle" font-size="28" fill="#3b7da3">Open landing-sea.html for the full archipelago map · the list + palette swapped here</text>
+        </g>
+      </svg>
+
+      <!-- ========================= PHONE: .nav-list ==========================
+           The SAME 19 targets as a stacked vertical list (≥44px rows). Shown
+           ≤767px, display:none above. aria-label wording is byte-identical to
+           the SVG node's. Optional reduced decorative header banner above. -->
+      <div class="nav-list-banner" aria-hidden="true">
+        <span class="banner-glow"></span>
+        <span class="banner-title" data-horror="The Corridor" data-sea="The Archipelago">The Corridor</span>
+        <span class="banner-sub" data-horror="Nineteen doors await" data-sea="Nineteen islands await">Nineteen doors await</span>
+      </div>
+      <nav class="nav-list" aria-label="Choose a door — a corridor of nineteen doors">
+        <ul>
+          <li class="nav-list-item nav-list-item--sealed"><a href="#/level/0" aria-label="Level 0 (sealed — fallback content)"><span class="nav-list-id">0</span><span class="nav-list-name" data-horror="Sealed" data-sea="Ruin (sunken)">Sealed</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/1" aria-label="Level 1"><span class="nav-list-id">1</span><span class="nav-list-name" data-horror="Door 1" data-sea="Crypt">Door 1</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/2" aria-label="Level 2"><span class="nav-list-id">2</span><span class="nav-list-name" data-horror="Door 2" data-sea="Witch's Hut">Door 2</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item nav-list-item--sealed"><a href="#/level/3" aria-label="Level 3 (sealed — fallback content)"><span class="nav-list-id">3</span><span class="nav-list-name" data-horror="Sealed" data-sea="Mausoleum (sunken)">Sealed</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item nav-list-item--sealed"><a href="#/level/4" aria-label="Level 4 (sealed — fallback content)"><span class="nav-list-id">4</span><span class="nav-list-name" data-horror="Sealed" data-sea="Ruined Abbey (sunken)">Sealed</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item nav-list-item--sealed"><a href="#/level/5" aria-label="Level 5 (sealed — fallback content)"><span class="nav-list-id">5</span><span class="nav-list-name" data-horror="Sealed" data-sea="Prison (sunken)">Sealed</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item nav-list-item--sealed"><a href="#/level/6" aria-label="Level 6 (sealed — fallback content)"><span class="nav-list-id">6</span><span class="nav-list-name" data-horror="Sealed" data-sea="Graveyard (sunken)">Sealed</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item nav-list-item--sealed"><a href="#/level/7" aria-label="Level 7 (sealed — fallback content)"><span class="nav-list-id">7</span><span class="nav-list-name" data-horror="Sealed" data-sea="Sealed (sunken)">Sealed</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/8" aria-label="Level 8"><span class="nav-list-id">8</span><span class="nav-list-name" data-horror="Door 8" data-sea="Sunken Temple">Door 8</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/9" aria-label="Level 9"><span class="nav-list-id">9</span><span class="nav-list-name" data-horror="Door 9" data-sea="Forbidden">Door 9</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/10" aria-label="Level 10"><span class="nav-list-id">10</span><span class="nav-list-name" data-horror="Door 10" data-sea="Cavern">Door 10</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/11" aria-label="Level 11"><span class="nav-list-id">11</span><span class="nav-list-name" data-horror="Door 11" data-sea="Sepulcher">Door 11</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/12" aria-label="Level 12"><span class="nav-list-id">12</span><span class="nav-list-name" data-horror="Door 12" data-sea="Watch Tower">Door 12</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/13" aria-label="Level 13"><span class="nav-list-id">13</span><span class="nav-list-name" data-horror="Door 13" data-sea="Pit">Door 13</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/14" aria-label="Level 14"><span class="nav-list-id">14</span><span class="nav-list-name" data-horror="Door 14" data-sea="Final Keep">Door 14</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/15" aria-label="Level 15"><span class="nav-list-id">15</span><span class="nav-list-name" data-horror="Door 15" data-sea="Haunted Tower">Door 15</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/16" aria-label="Level 16"><span class="nav-list-id">16</span><span class="nav-list-name" data-horror="Door 16" data-sea="Cursed Orchard">Door 16</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/17" aria-label="Level 17"><span class="nav-list-id">17</span><span class="nav-list-name" data-horror="Door 17" data-sea="Dragon's Den">Door 17</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+          <li class="nav-list-item"><a href="#/level/18" aria-label="Level 18"><span class="nav-list-id">18</span><span class="nav-list-name" data-horror="Door 18" data-sea="Forgotten Armory">Door 18</span><span class="nav-list-chev" aria-hidden="true">›</span></a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="mockup-hint" aria-hidden="true">M15 mockup · resize the window across 768px to see the SVG map ↔ list reflow · toggle theme top-right</div>
+    <script src="m15-toggle.js"></script>
+  </body>
+</html>
+</content>

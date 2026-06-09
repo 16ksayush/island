@@ -75,24 +75,27 @@ def test_level_page_theme_class_honors_cookie(client):
 
 
 # ===========================================================================
-# 2. Dynamic landing navigation (F1) — superseded by the M9/M10 map redesign.
-#    The door/island GRID (`.level-tile` + `badge-unavailable`) was deliberately
-#    removed from BOTH themes (M9 Horror, M10 Sea), replaced by a full-bleed
-#    illustrated map of 19 %-positioned `.map-hotspot` anchors -> /level/{id}.
-#    These tests now assert the SAME invariants against the Horror map markup;
-#    the Sea-arm equivalents live in tests/test_sea_landing.py.
+# 2. Dynamic landing navigation (F1) — MIGRATED to the M15 hybrid landing.
+#    The `.map-hotspot` raster-map overlay (M9/M10) was retired (ARCHITECTURE
+#    §15.7). Navigation is now rendered TWICE per arm in the SSR HTML: an SVG
+#    `.nav-node` <a> per level (desktop/tablet) AND a `.nav-list-item` <a> per
+#    level (phone), CSS-toggled at 768px. So the SSR HTML carries 19 of EACH
+#    family (38 total) — we therefore scope counts per representation, never a
+#    bare 19/38 over the whole document. These tests assert the SAME availability
+#    invariant against the Horror nav-node family; the Sea-arm and per-family
+#    M15 equivalents live in tests/test_sea_landing.py and tests/test_m15_landing.py.
 # ===========================================================================
-def _hotspot_hrefs(html: str) -> list[str]:
-    """Every navigation entry is an <a class="map-hotspot ..." href="/level/{id}">."""
-    return re.findall(r'<a\s+class="map-hotspot[^"]*"\s+href="(/level/\d+)"', html)
+def _nav_node_hrefs(html: str) -> list[str]:
+    """Every SVG nav target is an <a class="nav-node ..." href="/level/{id}">."""
+    return re.findall(r'<a\s+class="nav-node[^"]*"\s+href="(/level/\d+)"', html)
 
 
 def test_grid_renders_exactly_one_tile_per_reported_level(client):
-    # Superseded by the map redesign (M9/M10): the landing now exposes exactly
-    # one hotspot per level id 0..18 (all 19), regardless of discovery span.
-    # Invariant preserved: one navigation entry per level, no dupes, no extras.
-    html = client.get("/").text  # no cookie -> horror map
-    hrefs = _hotspot_hrefs(html)
+    # Migrated (M15): the landing now exposes exactly one SVG .nav-node per level
+    # id 0..18 (all 19), regardless of discovery span — scoped to the nav-node
+    # family (the .nav-list family adds 19 more, asserted separately).
+    html = client.get("/").text  # no cookie -> horror
+    hrefs = _nav_node_hrefs(html)
     rendered_ids = sorted(int(h.rsplit("/", 1)[-1]) for h in hrefs)
 
     assert len(hrefs) == 19, (len(hrefs), rendered_ids)
@@ -100,44 +103,45 @@ def test_grid_renders_exactly_one_tile_per_reported_level(client):
 
 
 def test_grid_distinguishes_available_from_unavailable(client):
-    # Superseded by the map redesign (M9/M10): availability is now conveyed by
-    # the `is-sealed` hotspot modifier + a "(sealed — fallback content)" label
-    # suffix instead of the old `is-unavailable` tile + "Lost" badge.
+    # Migrated (M15): availability is now conveyed by the `nav-node--sealed`
+    # modifier + a "(sealed — fallback content)" label suffix instead of the
+    # retired `is-sealed` hotspot. (Horror sealed wording: "(sealed — ...)".)
     api = {lvl["id"]: lvl["available"] for lvl in client.get("/api/levels").json()["levels"]}
-    html = client.get("/").text  # horror map
+    html = client.get("/").text  # horror
 
     for level_id in range(0, 19):
         available = api.get(level_id, False)
         pattern = re.compile(
-            r'<a\s+class="(map-hotspot[^"]*)"\s+href="/level/%d"' % level_id
+            r'<a\s+class="(nav-node[^"]*)"\s+href="/level/%d"' % level_id
         )
         m = pattern.search(html)
-        assert m, f"no hotspot rendered for level {level_id}"
+        assert m, f"no nav-node rendered for level {level_id}"
         cls = m.group(1)
         if available:
-            assert "is-sealed" not in cls, f"level {level_id} wrongly marked sealed"
+            assert "nav-node--sealed" not in cls, f"level {level_id} wrongly sealed"
         else:
-            assert "is-sealed" in cls, f"level {level_id} should be marked sealed"
+            assert "nav-node--sealed" in cls, f"level {level_id} should be sealed"
 
-    # The sealed label suffix appears exactly once per unavailable level.
+    # The sealed label suffix appears once per sealed level in EACH family
+    # (nav-node + nav-list), so 2x the unavailable count across the document.
     sealed_count = html.count("(sealed — fallback content)")
     expected_sealed = sum(1 for lid in range(0, 19) if not api.get(lid, False))
-    assert sealed_count == expected_sealed, (sealed_count, expected_sealed)
+    assert sealed_count == expected_sealed * 2, (sealed_count, expected_sealed)
 
 
 def test_grid_available_tiles_match_api_available_set(client):
-    # Superseded by the map redesign (M9/M10): available hotspots carry the bare
-    # `class="map-hotspot"` (no is-sealed); the set must match /api/levels.
+    # Migrated (M15): available nav-nodes carry the bare `class="nav-node"`
+    # (no --sealed); the set must match /api/levels.
     api = client.get("/api/levels").json()["levels"]
     available_ids = sorted(lvl["id"] for lvl in api if lvl["available"])
-    # Mocked tree -> folders 1, 2, 8 present.
+    # Mocked resource set -> levels 1, 2, 8 present.
     assert available_ids == [1, 2, 8]
 
-    html = client.get("/").text  # horror map
-    available_hotspots = re.findall(
-        r'<a\s+class="map-hotspot"\s+href="/level/(\d+)"', html
+    html = client.get("/").text  # horror
+    available_nodes = re.findall(
+        r'<a\s+class="nav-node"\s+href="/level/(\d+)"', html
     )
-    assert sorted(int(x) for x in available_hotspots) == available_ids
+    assert sorted(int(x) for x in available_nodes) == available_ids
 
 
 # ===========================================================================
