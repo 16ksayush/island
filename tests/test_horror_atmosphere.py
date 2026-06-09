@@ -58,8 +58,15 @@ def test_sea_omits_decorative_scene(client, path):
     assert 'class="theme-sea' in html, path
     for marker in HORROR_SCENE_MARKERS:
         assert marker not in html, f"{marker!r} leaked into Sea on {path}"
-    # The SVG <path>/<radialGradient> decoration must be gone too.
-    assert "<radialGradient" not in html, f"SVG defs leaked into Sea on {path}"
+    # The HORROR SVG defs must be gone. NB: M14 (A2 sign-off) intentionally gives
+    # the Sea LEVEL page its own `.sea-scene` with a `<radialGradient
+    # id="sea-sun-lvl">` sun glow, so the old blanket `<radialGradient not in`
+    # guard is now stale for /level/* (it correctly held for the M9 landing). We
+    # therefore assert the HORROR-specific gradient ids are absent, which still
+    # proves no horror decoration bled into Sea on any page. (DOCS RECONCILE: M9
+    # guard relaxed to track the M14 sea-scene addition — flagged to docs.)
+    assert 'id="hr-moon' not in html, f"horror SVG defs leaked into Sea on {path}"
+    assert "horror-silhouette" not in html, f"horror SVG leaked into Sea on {path}"
 
 
 def test_sea_atmosphere_div_present_but_empty(client):

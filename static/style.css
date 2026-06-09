@@ -1530,6 +1530,467 @@ a {
   }
 }
 
+/* =========================================================================
+   M14 — Atmospheric LEVEL/ISLAND page (/level/{id})
+   -------------------------------------------------------------------------
+   Fills the previously dead/empty per-level page with a full-bleed CSS/SVG
+   ENVIRONMENT (Horror moonlit room / Sea sunlit shore) behind the slideshow,
+   and reframes the slideshow as an ornate CSS/SVG centerpiece on .level-stage.
+
+   Pure CSS + inline SVG (HARD constraint 1): NO raster backgrounds/frames, NO
+   new tokens, NO :root edits. ONE Horror scene + ONE Sea scene for ALL ids
+   (uniform per theme, HARD constraint 2). Every rule is .theme-* scoped so the
+   themes never leak; the env/scene/decor live INSIDE the existing z-0
+   `.atmosphere` (pointer-events:none) and content stays on `.layer` (z-1).
+
+   These rules are additive and do NOT touch the M9/M10 LANDING map classes
+   (.horror-map / .sea-map / .horror-ambient / .sea-ambient ...). The reused
+   ambient leaf spans are positioned ONLY via `.theme-* .level-ambient .*--N`,
+   so the landings stay visually identical (R-M14-3, NF-M14-5).
+   ========================================================================= */
+
+/* The Sea .atmosphere needs the same contained/clipped context the Horror one
+   already has (set above) so the env bands + .sea-scene clip to the viewport. */
+.theme-sea .atmosphere {
+  overflow: hidden;
+}
+
+/* ---- HORROR environment: "inside a moonlit room" ------------------------ */
+/* Back wall: upper ~62%, dark navy with faint vertical panel seams. */
+.theme-horror .level-env-wall {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 62%;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.018) 0 1px,
+      transparent 1px 120px
+    ),
+    linear-gradient(180deg, #10172a 0%, #0b1020 70%, #0a0e1a 100%);
+}
+/* Soft picture-rail shadow behind the centerpiece (reads as "hung on a wall"). */
+.theme-horror .level-env-wall::after {
+  content: "";
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  top: 22%;
+  height: 46%;
+  border-radius: 16px;
+  box-shadow: 0 40px 90px 10px rgba(0, 0, 0, 0.55);
+}
+/* Floorboards: lower band pushed into perspective + fade toward the wall. */
+.theme-horror .level-env-floor {
+  position: absolute;
+  left: -20%;
+  right: -20%;
+  bottom: 0;
+  height: 40%;
+  pointer-events: none;
+  transform: perspective(520px) rotateX(58deg);
+  transform-origin: top center;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.35) 0 2px,
+      transparent 2px 78px
+    ),
+    linear-gradient(180deg, #1a130c 0%, #120c07 60%, #0a0705 100%);
+}
+/* Moonlit baseboard seam where the wall meets the floor. */
+.theme-horror .level-env-floor::before {
+  content: "";
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  top: -2px;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(190, 205, 235, 0.5),
+    transparent
+  );
+  filter: blur(1px);
+}
+
+/* ---- SEA environment: "sunlit shore" (fills the previously-empty scene) -- */
+.theme-sea .level-env-sky {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 46%;
+  pointer-events: none;
+  background: linear-gradient(180deg, #cdeefe 0%, #a8e0fb 60%, #93d6f7 100%);
+}
+.theme-sea .level-env-sea {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 44%;
+  height: 34%;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.1) 0 1px,
+      transparent 1px 22px
+    ),
+    linear-gradient(180deg, #38bdf8 0%, #0ea5e9 60%, #0284c7 100%);
+}
+/* Crisp horizon highlight line where sky meets sea. */
+.theme-sea .level-env-sea::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.85),
+    transparent
+  );
+}
+.theme-sea .level-env-sand {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 26%;
+  pointer-events: none;
+  background:
+    radial-gradient(
+        circle at 20% 30%,
+        rgba(255, 255, 255, 0.25) 0 2px,
+        transparent 3px
+      )
+      0 0 / 40px 40px,
+    linear-gradient(180deg, #fde9bf 0%, #f6d79a 60%, #eec984 100%);
+}
+/* Soft white foam / shoreline arc where the sea meets the sand. */
+.theme-sea .level-env-sand::before {
+  content: "";
+  position: absolute;
+  left: -5%;
+  right: -5%;
+  top: -10px;
+  height: 26px;
+  background: radial-gradient(
+    60% 120% at 50% 100%,
+    rgba(255, 255, 255, 0.85),
+    transparent 70%
+  );
+  filter: blur(2px);
+}
+
+/* ---- SEA scene: NEW inline-SVG twin of .horror-scene -------------------- */
+/* Same inertness as the Horror scene: fixed full-viewport behind content,
+   pointer-events:none. Each <svg> carries focusable="false" in the markup. */
+.theme-sea .sea-scene {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.theme-sea .sea-silhouette {
+  position: absolute;
+  pointer-events: none;
+  display: block;
+}
+/* Low sun/cloud glow disc, top-right; faint slow opacity breathe (R-H3-safe). */
+.theme-sea .sea-silhouette--sun {
+  top: 6%;
+  right: 12%;
+  width: clamp(90px, 12vw, 180px);
+  height: auto;
+  opacity: 0.75;
+  animation: sea-sun-breathe 9s ease-in-out infinite;
+}
+/* Palm/island silhouette anchored LOW + OFF to one side (never behind photo). */
+.theme-sea .sea-silhouette--palm {
+  bottom: 0;
+  left: 9%;
+  width: clamp(120px, 16vw, 220px);
+  height: auto;
+  opacity: 0.92;
+  filter: drop-shadow(0 6px 10px rgba(2, 80, 130, 0.25));
+}
+/* Foam waves framing the L/R viewport edges (mirror of the Horror claws). */
+.theme-sea .sea-silhouette--wave-left {
+  bottom: 4%;
+  left: 0;
+  width: clamp(80px, 11vw, 150px);
+  height: auto;
+  opacity: 0.5;
+}
+.theme-sea .sea-silhouette--wave-right {
+  bottom: 9%;
+  right: 0;
+  width: clamp(80px, 11vw, 150px);
+  height: auto;
+  opacity: 0.5;
+  transform: scaleX(-1);
+}
+
+/* ---- Ambient decor wrapper (.level-ambient) — reuses landing leaf spans -- */
+/* Distinct wrapper from the landing's .horror-ambient / .sea-ambient. Sits at
+   z-0 behind .layer, pointer-events:none. The leaf spans (.horror-ghost /
+   -twinkle, .sea-balloon / -bird / -cloud) reuse the EXISTING theme-scoped base
+   rules + @keyframes + reduced-motion freeze defined above; we only ADD level-
+   page per-instance positions here (never editing the landing rules). */
+.level-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Horror reused leaves — sparse, in the side/top gutters (R-M14-3). */
+.theme-horror .level-ambient .horror-ghost--0 {
+  left: 4%;
+  top: 30%;
+  animation-duration: 31s;
+  animation-delay: 0s;
+}
+.theme-horror .level-ambient .horror-ghost--1 {
+  left: auto;
+  right: 5%;
+  top: 24%;
+  animation-duration: 38s;
+  animation-delay: 6s;
+}
+.theme-horror .level-ambient .horror-twinkle--0 {
+  left: 16%;
+  top: 7%;
+  animation-delay: 0s;
+}
+.theme-horror .level-ambient .horror-twinkle--1 {
+  left: 70%;
+  top: 5%;
+  animation-delay: 2s;
+}
+.theme-horror .level-ambient .horror-twinkle--2 {
+  left: 46%;
+  top: 10%;
+  animation-delay: 3.5s;
+}
+
+/* Sea reused leaves — a balloon or two + gulls + a cloud in the sky gutters. */
+.theme-sea .level-ambient .sea-balloon--0 {
+  left: 6%;
+  top: 14%;
+  --bln-a: #0284c7;
+  --bln-b: #38bdf8;
+  --bln-c: #0369a1;
+  animation-duration: 48s;
+  animation-delay: 0s;
+}
+.theme-sea .level-ambient .sea-balloon--1 {
+  left: auto;
+  right: 8%;
+  top: 9%;
+  --bln-a: #f97316;
+  --bln-b: #fb923c;
+  --bln-c: #ea580c;
+  animation-duration: 54s;
+  animation-delay: 14s;
+}
+.theme-sea .level-ambient .sea-bird--0 {
+  left: -6%;
+  top: 10%;
+  animation-delay: 0s;
+}
+.theme-sea .level-ambient .sea-bird--1 {
+  left: -6%;
+  top: 16%;
+  animation-delay: 9s;
+}
+.theme-sea .level-ambient .sea-cloud--0 {
+  left: -14%;
+  top: 6%;
+  animation-delay: 0s;
+}
+
+/* ---- THE FRAME: .level-stage as a themed ornate mount ------------------- */
+/* Horror: gilded portrait frame. Keeps the existing opaque dark backing +
+   inset scrim (defined above) so field/glow/fog/decor never wash the photo
+   (R-M14-1). Adds a gilt border-image + lift shadow + inner gilt bevel. */
+.theme-horror .level-stage {
+  border: clamp(8px, 1.4vw, 16px) solid transparent;
+  border-image: linear-gradient(
+      135deg,
+      #7a5410,
+      #ffce6b,
+      #b67e1b,
+      #ffce6b,
+      #7a5410
+    )
+    1;
+  box-shadow:
+    0 28px 60px -10px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 2px rgba(255, 206, 107, 0.35),
+    inset 0 0 120px rgba(0, 0, 0, 0.85);
+}
+/* Sea: driftwood border + the existing light sand backing, PLUS a soft inner
+   scrim so the bright sky/sea field can't wash the photo (the symmetric
+   R-M14-1 guard the Sea stage previously lacked). */
+.theme-sea .level-stage {
+  border: clamp(8px, 1.4vw, 16px) solid transparent;
+  border-image: linear-gradient(
+      135deg,
+      #b98a55,
+      #e8c79a,
+      #9c7440,
+      #e8c79a,
+      #b98a55
+    )
+    1;
+  box-shadow:
+    0 18px 36px rgba(2, 132, 199, 0.28),
+    inset 0 0 0 2px rgba(156, 116, 64, 0.3),
+    inset 0 0 70px rgba(255, 255, 255, 0.5);
+}
+
+/* Ornamental corner SVGs (gilded scrollwork Horror / driftwood + rope-shell
+   Sea). Decorative .level-stage children: aria-hidden + focusable="false" +
+   pointer-events:none. Scale via clamp(); hidden under ~480px (see mobile). */
+.frame-corner {
+  position: absolute;
+  width: clamp(28px, 5vw, 56px);
+  height: clamp(28px, 5vw, 56px);
+  pointer-events: none;
+}
+.frame-corner--tl {
+  top: -6px;
+  left: -6px;
+}
+.frame-corner--tr {
+  top: -6px;
+  right: -6px;
+  transform: scaleX(-1);
+}
+.frame-corner--bl {
+  bottom: -6px;
+  left: -6px;
+  transform: scaleY(-1);
+}
+.frame-corner--br {
+  bottom: -6px;
+  right: -6px;
+  transform: scale(-1, -1);
+}
+/* Horror: warm gilt scrollwork + filigree flourish. */
+.theme-horror .frame-corner .frame-scroll {
+  stroke: #ffce6b;
+  opacity: 0.85;
+}
+.theme-horror .frame-corner .frame-flourish {
+  fill: #ffce6b;
+  opacity: 0.9;
+}
+/* Sea: weathered driftwood-tan scrollwork + a soft coral shell flourish. */
+.theme-sea .frame-corner .frame-scroll {
+  stroke: #b98a55;
+  opacity: 0.9;
+}
+.theme-sea .frame-corner .frame-flourish {
+  fill: #f5a6a0;
+  opacity: 0.95;
+}
+
+/* ---- Diegetic fallback note (.level-note) — plaque / signpost ----------- */
+/* The sealed/missing note ("...salvaged fallback content") restyled in-scene.
+   Base layout is neutral; the palette skins are .theme-* scoped. */
+.level-note {
+  max-width: 64rem;
+  margin: 0 auto 1rem;
+  padding: 0.7rem 1.1rem;
+  text-align: center;
+  font-size: 0.92rem;
+  border-radius: 8px;
+}
+/* Horror: a worn brass plaque nailed to a sealed door. */
+.theme-horror .level-note {
+  color: #f4d58a;
+  font-family: "Georgia", "Times New Roman", serif;
+  letter-spacing: 0.04em;
+  background: linear-gradient(180deg, #2a2415, #1b1810);
+  border: 1px solid #6b5410;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 206, 107, 0.25),
+    0 6px 16px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+/* Sea: a weathered driftwood plank / signpost on the shore. */
+.theme-sea .level-note {
+  color: #1f4a63;
+  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  font-weight: 600;
+  background: repeating-linear-gradient(
+    90deg,
+    #efdcb6 0 14px,
+    #e8d2a6 14px 28px
+  );
+  border: 1px solid #c2a36e;
+  box-shadow: 0 6px 16px rgba(2, 132, 199, 0.2);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* Page-title legibility on the Sea level page (light field). */
+.theme-sea .page-title {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ---- M14 motion keyframe (the only NEW one — sun breathe) --------------- */
+/* Tiny, slow opacity oscillation only — no luminance strobe (R-H3 bar). */
+@keyframes sea-sun-breathe {
+  0%,
+  100% {
+    opacity: 0.68;
+  }
+  50% {
+    opacity: 0.82;
+  }
+}
+
+/* ---- M14 responsive: thin decor / tighten the frame on small screens ---- */
+@media (max-width: 480px) {
+  /* Tighten the stage padding so the frame never crowds the photo. */
+  .level-stage {
+    padding: 0.9rem;
+  }
+  /* Corner scrollwork/rope would overlap the photo at phone widths — hide it. */
+  .frame-corner {
+    display: none;
+  }
+  /* Thin the reused ambient decor on small screens (mirrors the landing). */
+  .theme-horror .level-ambient .horror-ghost--1,
+  .theme-sea .level-ambient .sea-balloon--1 {
+    display: none;
+  }
+}
+
+/* ---- M14 reduced motion: freeze ONLY the NEW .sea-scene sun breathe ------ */
+/* The reused ambient spans (.horror-ghost/-twinkle, .sea-balloon/-bird/-cloud)
+   are ALREADY frozen by the existing reduce block above (same selectors), so
+   they inherit the freeze on the level page for free. The env bands are static
+   gradients (nothing to freeze). Only the NEW sun-breathe needs an explicit
+   static frame (steady opacity), mirroring the Horror doorway-flicker freeze. */
+@media (prefers-reduced-motion: reduce) {
+  .theme-sea .sea-silhouette--sun {
+    animation: none !important;
+    opacity: 0.75;
+  }
+}
+
 /* Respect users who prefer reduced motion: kill long transitions/animations. */
 @media (prefers-reduced-motion: reduce) {
   *,

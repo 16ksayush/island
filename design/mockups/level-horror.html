@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<!--
+  M14 MOCKUP — Horror level page (available slideshow state).
+  Look/feel artifact for sign-off. Theme toggle swaps .theme-horror <-> .theme-sea
+  on <html> so the reviewer feels both realities. Static: placeholder photo, no
+  real slideshow JS / fetch / audio (the build keeps all of that byte-for-byte).
+-->
+<html lang="en" class="theme-horror">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M14 mockup — Room 12 (Horror)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="m14-scene.css" />
+  </head>
+  <body>
+    <!-- z-0 decorative environment (aria-hidden, pointer-events:none) -->
+    <div class="atmosphere" aria-hidden="true">
+      <!-- ENVIRONMENT gradient bands (.level-env-*) -->
+      <div class="level-env-wall"></div>
+      <div class="level-env-floor"></div>
+
+      <!-- Existing horror scene (kept) -->
+      <div class="horror-scene" aria-hidden="true">
+        <svg class="horror-silhouette horror-silhouette--doorway" viewBox="0 0 100 160" preserveAspectRatio="xMidYMin meet" focusable="false">
+          <defs><radialGradient id="hr-moon" cx="50%" cy="42%" r="60%">
+            <stop offset="0%" stop-color="#cfe0ff" stop-opacity="0.9" />
+            <stop offset="55%" stop-color="#9fb6e0" stop-opacity="0.35" />
+            <stop offset="100%" stop-color="#9fb6e0" stop-opacity="0" />
+          </radialGradient></defs>
+          <rect x="30" y="6" width="40" height="148" rx="20" fill="url(#hr-moon)" />
+        </svg>
+        <svg class="horror-silhouette horror-silhouette--figure" viewBox="0 0 120 180" preserveAspectRatio="xMidYMax meet" focusable="false">
+          <path fill="#02040a" d="M60 8c-16 0-27 12-27 30 0 9 3 16 8 21-8 6-14 17-17 33-4 22-6 41-6 58h84c0-17-2-36-6-58-3-16-9-27-17-33 5-5 8-12 8-21 0-18-11-30-27-30z" />
+        </svg>
+        <svg class="horror-silhouette horror-silhouette--claw-left" viewBox="0 0 80 120" preserveAspectRatio="xMinYMax meet" focusable="false">
+          <path fill="#02040a" d="M0 60c10-2 18-6 26-12 3 14 4 27 3 40-1-9-3-17-7-24 6 10 9 21 9 33-3-10-7-19-13-26 4 11 6 22 5 33-4-12-9-22-16-31 1 12 1 23-1 34C-2 110-2 84 0 60z" />
+        </svg>
+        <svg class="horror-silhouette horror-silhouette--claw-right" viewBox="0 0 80 120" preserveAspectRatio="xMinYMax meet" focusable="false">
+          <path fill="#02040a" d="M0 60c10-2 18-6 26-12 3 14 4 27 3 40-1-9-3-17-7-24 6 10 9 21 9 33-3-10-7-19-13-26 4 11 6 22 5 33-4-12-9-22-16-31 1 12 1 23-1 34C-2 110-2 84 0 60z" />
+        </svg>
+      </div>
+
+      <!-- REUSED landing decor on the NEW .level-ambient wrapper -->
+      <div class="level-ambient" aria-hidden="true">
+        <svg class="horror-ghost horror-ghost--0" viewBox="0 0 50 64" focusable="false">
+          <path d="M25 2C13 2 6 11 6 24v34l5-5 5 5 4-5 5 5 5-5 4 5 5-5V24C44 11 37 2 25 2z" />
+          <circle cx="19" cy="25" r="2.6" fill="#0a0e1a" /><circle cx="31" cy="25" r="2.6" fill="#0a0e1a" />
+        </svg>
+        <svg class="horror-ghost horror-ghost--1" viewBox="0 0 50 64" focusable="false">
+          <path d="M25 2C13 2 6 11 6 24v34l5-5 5 5 4-5 5 5 5-5 4 5 5-5V24C44 11 37 2 25 2z" />
+          <circle cx="19" cy="25" r="2.6" fill="#0a0e1a" /><circle cx="31" cy="25" r="2.6" fill="#0a0e1a" />
+        </svg>
+        <span class="horror-twinkle horror-twinkle--0"></span>
+        <span class="horror-twinkle horror-twinkle--1"></span>
+        <span class="horror-twinkle horror-twinkle--2"></span>
+      </div>
+    </div>
+
+    <!-- z-1 content -->
+    <div class="layer scene-shell">
+      <header class="scene-header">
+        <div class="left">
+          <a href="#" class="app-logo" aria-label="Back to the corridor (home)">tA</a>
+          <h1 class="page-title">Room 12</h1>
+        </div>
+        <button id="theme-toggle" type="button" class="theme-toggle"
+                aria-label="Toggle between Horror and Sea themes">
+          <span class="toggle-icon" aria-hidden="true">🌊</span>
+          <span class="toggle-label">Sail to the Sea</span>
+        </button>
+      </header>
+
+      <!-- THE FRAME: .level-stage as a gilded portrait mount -->
+      <main class="level-stage">
+        <svg class="frame-corner frame-corner--tl" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path d="M4 52V18C4 10 10 4 18 4h34" fill="none" stroke="#ffce6b" stroke-width="2.5" opacity="0.85"/>
+          <path d="M10 30c6-2 10-8 12-16 4 6 9 9 16 10-7 2-12 6-15 14-2-7-7-11-13-8z" fill="#ffce6b" opacity="0.9"/>
+        </svg>
+        <svg class="frame-corner frame-corner--tr" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path d="M4 52V18C4 10 10 4 18 4h34" fill="none" stroke="#ffce6b" stroke-width="2.5" opacity="0.85"/>
+          <path d="M10 30c6-2 10-8 12-16 4 6 9 9 16 10-7 2-12 6-15 14-2-7-7-11-13-8z" fill="#ffce6b" opacity="0.9"/>
+        </svg>
+        <svg class="frame-corner frame-corner--bl" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path d="M4 52V18C4 10 10 4 18 4h34" fill="none" stroke="#ffce6b" stroke-width="2.5" opacity="0.85"/>
+          <path d="M10 30c6-2 10-8 12-16 4 6 9 9 16 10-7 2-12 6-15 14-2-7-7-11-13-8z" fill="#ffce6b" opacity="0.9"/>
+        </svg>
+        <svg class="frame-corner frame-corner--br" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path d="M4 52V18C4 10 10 4 18 4h34" fill="none" stroke="#ffce6b" stroke-width="2.5" opacity="0.85"/>
+          <path d="M10 30c6-2 10-8 12-16 4 6 9 9 16 10-7 2-12 6-15 14-2-7-7-11-13-8z" fill="#ffce6b" opacity="0.9"/>
+        </svg>
+
+        <div class="slideshow" aria-roledescription="carousel" aria-label="Level 12 images">
+          <figure class="slide">
+            <img class="slide-img" src="https://picsum.photos/seed/horror12/900/600" alt="Room 12 — placeholder image" />
+            <figcaption class="slide-caption">A portrait recovered from the twelfth room — its sitter long gone.</figcaption>
+          </figure>
+          <button class="slide-nav slide-prev" aria-label="Previous image">‹</button>
+          <button class="slide-nav slide-next" aria-label="Next image">›</button>
+          <div class="slide-dots" role="tablist" aria-label="Select image">
+            <button class="slide-dot is-active" role="tab" aria-label="Image 1"></button>
+            <button class="slide-dot" role="tab" aria-label="Image 2"></button>
+            <button class="slide-dot" role="tab" aria-label="Image 3"></button>
+          </div>
+        </div>
+      </main>
+
+      <footer class="scene-footer">Tour-de-Anshika · Level 12</footer>
+    </div>
+
+    <script src="m14-toggle.js"></script>
+  </body>
+</html>

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<!--
+  M14 MOCKUP — Sea level page (available slideshow state). The biggest visible
+  fix: the Sea .atmosphere is EMPTY today; this adds the NEW .sea-scene (twin of
+  .horror-scene) + sky/sea/sand env bands + reused .sea-* ambient decor so the
+  page reads as a sunlit shore, not a void. Theme toggle swaps both realities.
+-->
+<html lang="en" class="theme-sea">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M14 mockup — Island 8 (Sea)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="m14-scene.css" />
+  </head>
+  <body class="theme-sea">
+    <div class="atmosphere" aria-hidden="true">
+      <!-- ENVIRONMENT gradient bands (.level-env-*) -->
+      <div class="level-env-sky"></div>
+      <div class="level-env-sea"></div>
+      <div class="level-env-sand"></div>
+
+      <!-- NEW .sea-scene — structural twin of .horror-scene -->
+      <div class="sea-scene" aria-hidden="true">
+        <svg class="sea-silhouette sea-silhouette--sun" viewBox="0 0 100 100" focusable="false">
+          <defs><radialGradient id="sea-sun" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#fff7dc" stop-opacity="0.95" />
+            <stop offset="55%" stop-color="#ffe08a" stop-opacity="0.45" />
+            <stop offset="100%" stop-color="#ffe08a" stop-opacity="0" />
+          </radialGradient></defs>
+          <circle cx="50" cy="50" r="46" fill="url(#sea-sun)" />
+        </svg>
+        <svg class="sea-silhouette sea-silhouette--palm" viewBox="0 0 120 160" preserveAspectRatio="xMidYMax meet" focusable="false">
+          <path d="M58 160c-2-36 0-70 4-96l8 1c-3 26-5 60-4 95z" fill="#5b3a1e" />
+          <path d="M62 64C44 50 24 50 8 60c18-2 34 4 50 16-18-22-2-44 22-52-18 4-30 18-18 40 6-26 30-36 56-32-24-2-42 14-52 36 14-20 40-24 64-12-22-12-46-6-68 8z" fill="#1f7a3d" />
+          <ellipse cx="60" cy="158" rx="44" ry="6" fill="#0284c7" opacity="0.18" />
+        </svg>
+        <svg class="sea-silhouette sea-silhouette--wave-left" viewBox="0 0 100 40" focusable="false">
+          <path d="M0 30c12-10 22-10 34 0s22 10 34 0 22-10 32 0v10H0z" fill="#bfe9ff" opacity="0.8" />
+        </svg>
+        <svg class="sea-silhouette sea-silhouette--wave-right" viewBox="0 0 100 40" focusable="false">
+          <path d="M0 30c12-10 22-10 34 0s22 10 34 0 22-10 32 0v10H0z" fill="#bfe9ff" opacity="0.8" />
+        </svg>
+      </div>
+
+      <!-- REUSED Sea landing decor on the NEW .level-ambient wrapper -->
+      <div class="level-ambient" aria-hidden="true">
+        <svg class="sea-balloon sea-balloon--0" viewBox="0 0 60 90" focusable="false">
+          <path d="M30 2C16 2 6 13 6 28c0 12 8 21 16 27h16c8-6 16-15 16-27C54 13 44 2 30 2z" fill="var(--bln-a)" />
+          <path d="M22 4c-7 4-12 13-12 24 0 11 5 21 12 27V4z" fill="var(--bln-b)" opacity="0.9" />
+          <path d="M38 4c7 4 12 13 12 24 0 11-5 21-12 27V4z" fill="var(--bln-c)" opacity="0.9" />
+          <rect x="25" y="56" width="10" height="3" rx="1" fill="#7a4a1f" />
+          <path d="M26 59l-1 9h10l-1-9z" fill="#9c6b35" />
+        </svg>
+        <svg class="sea-balloon sea-balloon--1" viewBox="0 0 60 90" focusable="false">
+          <path d="M30 2C16 2 6 13 6 28c0 12 8 21 16 27h16c8-6 16-15 16-27C54 13 44 2 30 2z" fill="var(--bln-a)" />
+          <path d="M22 4c-7 4-12 13-12 24 0 11 5 21 12 27V4z" fill="var(--bln-b)" opacity="0.9" />
+          <path d="M38 4c7 4 12 13 12 24 0 11-5 21-12 27V4z" fill="var(--bln-c)" opacity="0.9" />
+          <rect x="25" y="56" width="10" height="3" rx="1" fill="#7a4a1f" />
+          <path d="M26 59l-1 9h10l-1-9z" fill="#9c6b35" />
+        </svg>
+        <svg class="sea-bird sea-bird--0" viewBox="0 0 40 16" focusable="false">
+          <path d="M2 12C8 4 14 4 20 9c6-5 12-5 18 3-6-3-11-2-18 3-7-5-12-6-18-3z" fill="#3a5a72" />
+        </svg>
+        <svg class="sea-bird sea-bird--1" viewBox="0 0 40 16" focusable="false">
+          <path d="M2 12C8 4 14 4 20 9c6-5 12-5 18 3-6-3-11-2-18 3-7-5-12-6-18-3z" fill="#3a5a72" />
+        </svg>
+        <svg class="sea-cloud sea-cloud--0" viewBox="0 0 100 44" focusable="false">
+          <path d="M20 38c-9 0-16-6-16-14 0-7 6-13 14-13 2-7 9-11 16-11 9 0 16 6 18 14 7 0 13 5 13 12 0 7-6 12-14 12z" fill="#ffffff" />
+        </svg>
+      </div>
+    </div>
+
+    <div class="layer scene-shell">
+      <header class="scene-header">
+        <div class="left">
+          <a href="#" class="app-logo" aria-label="Back to the island map (home)">tA</a>
+          <h1 class="page-title">Island 8</h1>
+        </div>
+        <button id="theme-toggle" type="button" class="theme-toggle"
+                aria-label="Toggle between Horror and Sea themes">
+          <span class="toggle-icon" aria-hidden="true">🌙</span>
+          <span class="toggle-label">Enter the Corridor</span>
+        </button>
+      </header>
+
+      <!-- THE FRAME: .level-stage as a driftwood + rope/shell mount -->
+      <main class="level-stage">
+        <svg class="frame-corner frame-corner--tl" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path d="M6 50C6 30 6 14 22 8c10-4 22-2 28 6-8-4-18-4-26 2C12 24 12 38 10 52z" fill="none" stroke="#b98a55" stroke-width="3" opacity="0.9"/>
+          <circle cx="20" cy="20" r="3" fill="#e8c79a"/>
+          <path d="M40 44c4-4 4-10 0-14-3 4-3 10 0 14z" fill="#f5a6a0"/>
+          <path d="M40 44c-4-4-4-10 0-14 3 4 3 10 0 14z" fill="#f7b9b3"/>
+        </svg>
+        <svg class="frame-corner frame-corner--tr" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path d="M6 50C6 30 6 14 22 8c10-4 22-2 28 6-8-4-18-4-26 2C12 24 12 38 10 52z" fill="none" stroke="#b98a55" stroke-width="3" opacity="0.9"/>
+          <circle cx="20" cy="20" r="3" fill="#e8c79a"/>
+          <path d="M40 44c4-4 4-10 0-14-3 4-3 10 0 14z" fill="#f5a6a0"/>
+          <path d="M40 44c-4-4-4-10 0-14 3 4 3 10 0 14z" fill="#f7b9b3"/>
+        </svg>
+        <svg class="frame-corner frame-corner--bl" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path d="M6 50C6 30 6 14 22 8c10-4 22-2 28 6-8-4-18-4-26 2C12 24 12 38 10 52z" fill="none" stroke="#b98a55" stroke-width="3" opacity="0.9"/>
+          <circle cx="20" cy="20" r="3" fill="#e8c79a"/>
+        </svg>
+        <svg class="frame-corner frame-corner--br" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path d="M6 50C6 30 6 14 22 8c10-4 22-2 28 6-8-4-18-4-26 2C12 24 12 38 10 52z" fill="none" stroke="#b98a55" stroke-width="3" opacity="0.9"/>
+          <circle cx="20" cy="20" r="3" fill="#e8c79a"/>
+        </svg>
+
+        <div class="slideshow" aria-roledescription="carousel" aria-label="Level 8 images">
+          <figure class="slide">
+            <img class="slide-img" src="https://picsum.photos/seed/sea8/900/600" alt="Island 8 — placeholder image" />
+            <figcaption class="slide-caption">Sun on the shallows of the eighth island — washed ashore from the Sunken Temple.</figcaption>
+          </figure>
+          <button class="slide-nav slide-prev" aria-label="Previous image">‹</button>
+          <button class="slide-nav slide-next" aria-label="Next image">›</button>
+          <div class="slide-dots" role="tablist" aria-label="Select image">
+            <button class="slide-dot is-active" role="tab" aria-label="Image 1"></button>
+            <button class="slide-dot" role="tab" aria-label="Image 2"></button>
+            <button class="slide-dot" role="tab" aria-label="Image 3"></button>
+          </div>
+        </div>
+      </main>
+
+      <footer class="scene-footer">Tour-de-Anshika · Level 8</footer>
+    </div>
+
+    <script src="m14-toggle.js"></script>
+  </body>
+</html>

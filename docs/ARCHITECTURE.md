@@ -141,7 +141,7 @@ Note: `static/` and `templates/` sit at the repo root (per PRD), not under `app/
 
 # 8. Horror Atmosphere Redesign (M9 / HR1–HR8, NF-HR1–NF-HR6)
 
-Status: **Design proposed (H1).** Scope is the **Horror theme visuals only** — a cinematic haunted-corridor scene on the landing page (`index.html`) and a calmer "inside a room" variant inside each level page (`level.html`). **SEA theme, backend, routes, payloads, audio, and all JS data-flow are OUT OF SCOPE and are not touched.** This section is additive to §1–§7 above; the CRITICAL Drive note (§5) and all prior decisions stand unchanged.
+Status: **Shipped (M9).** Scope is the **Horror theme visuals only** — a cinematic haunted-corridor scene on the landing page (`index.html`) and a calmer "inside a room" variant inside each level page (`level.html`). **SEA theme, backend, routes, payloads, audio, and all JS data-flow are OUT OF SCOPE and are not touched.** This section is additive to §1–§7 above; the CRITICAL Drive note (§5) and all prior decisions stand unchanged. **⚠️ Superseded for the LEVEL page by M14 (§14, shipped 2026-06-09):** the Sea LEVEL page is no longer scene-less — it now carries its own inline-SVG `.sea-scene` + `level-env-*` bands (the twin of `.horror-scene`). This M9 "Horror-only level-page scene" statement is true only of the pre-M14 level page; the Sea/Horror LANDING scopes here are unchanged.
 
 ## 8.1 Constraints honoured (re-read against the real code)
 - The redesign reuses the **existing primitives only**: the `<div class="atmosphere" aria-hidden="true">` already injected in both templates, the `.layer` content wrapper, the `--page-bg-image` / `--vignette` / `--t-transition` tokens, and the existing `prefers-reduced-motion` block at the end of `static/style.css`.
@@ -896,3 +896,121 @@ M11 captions are still keyed by filename, but the key is the **stem** (`app/capt
 
 ## 13.7 Tests
 Hermetic suite **163 passed**: the Cloudinary Admin API is mocked in `tests/conftest.py`; `tests/test_cloudinary.py` added; `tests/test_cache.py` + `tests/test_m12_bake_manifest.py` deleted; `tests/test_backend.py` / `tests/test_captions.py` converted. No network, no real secret.
+
+---
+
+# 14. Dynamic, atmospheric level/island pages (M14 / M14R1–M14R9, NF-M14-1…8)
+
+Status: **✅ SHIPPED (2026-06-09) — design (L1) implemented as specified; SECURITY-APPROVED, QA-VERIFIED (full suite 185 passed), local `uvicorn` smoke PASSED; pending commit.** Built exactly per this design with the recommended defaults: pure CSS + inline SVG (raster DEFERRED — no `static/img` env asset added), uniform per theme, pure-CSS/SVG frame (`.frame-corner`/`-corner--*`). Scope was a **frontend-only redesign of the per-level page** (`templates/level.html` + theme-scoped `static/style.css`, plus the `templates/index.html` `style.css?v=7` link bump) so `/level/{id}` has the immersive, full-bleed, decorated atmosphere the M9/M10 landing maps already have — replacing the old "one small framed image floating in a vast flat dark/empty backdrop." Both themes (Horror room / Sea shore), both states (available slideshow **and** sealed/missing fallback). **Backend, routes, the `/api/levels/{id}/photos` payload, Cloudinary discovery (§13), and the audio engine were OUT OF SCOPE and untouched — `app/main.py` was not modified.** This section is additive to §1–§13; the Cloudinary source (§13) and all prior decisions stand. It extends — does not replace — the §8 Horror `.atmosphere` model: §8.2's layering and §8.3–§8.5's CSS/SVG technique are the foundation M14 generalized to (a) the Sea LEVEL page (the NEW inline-SVG `.sea-scene` + `level-env-*` bands) and (b) the framed centerpiece.
+
+## 14.1 Constraints honoured (re-read against the real code)
+Verified against `templates/level.html`, `templates/index.html`, `static/style.css`, and `app/main.py` `level_page`:
+- The level page **already** carries the shared `<div class="atmosphere" aria-hidden="true">` overlay and, for Horror only, the `.horror-scene` inline-SVG block (`.horror-silhouette--doorway/-figure/-claw-left/-claw-right`, all `focusable="false"`), plus the `.theme-horror .atmosphere::before/::after` fog bands and the `.theme-horror .level-stage`/`.theme-horror .slideshow` backing scrims (the R-H5 glow guard, style.css ~738–764). **Pre-M14: the Sea level page rendered an EMPTY `.atmosphere`** — the Horror-only `.horror-scene` guard meant Sea got no scenery. **✅ As-shipped (M14): the Sea LEVEL page now carries its own inline-SVG `.sea-scene`** in a `{% if theme == 'sea' %}` branch (the structural twin of `.horror-scene` — `aria-hidden`, `focusable="false"`, inert, no `tabindex`), with `<radialGradient id="sea-sun-lvl">`, `.sea-silhouette--*` shapes, and the `level-env-sky`/`-sea`/`-sand` gradient bands. (Note: `tests/test_horror_atmosphere.py`'s M9 blanket "no `<radialGradient>` on a Sea page" guard was relaxed for the LEVEL page accordingly — it still asserts no HORROR decoration leaks into the Sea page, and the Sea LANDING `/` case is unchanged.) The Sea LANDING map (`index.html`) remains its own separate scene.
+- The landing's richer ambient vocabulary — `.horror-ghost`/`.horror-twinkle`/`.horror-star` (in `.horror-ambient`) and `.sea-balloon`/`.sea-bird`/`.sea-cloud` (in `.sea-ambient`) — lives ONLY on the landing today (inside `.horror-landing`/`.sea-landing`). Their leaf animation rules (`@keyframes hr-ghost/hr-twinkle/hr-star/sea-balloon/sea-bird/sea-cloud`) are **container-agnostic**: the keyframes drive `transform`/`opacity` and the per-instance `--N` rules set `top/left` + timing. They can be reused on the level page by placing the same spans inside a **level-page-scoped container** (NOT `.horror-ambient`/`.sea-ambient`, whose `position:absolute; inset:0` is sized to the full-bleed landing map) — see §14.3.
+- The redesign reuses **existing primitives only**: the `.atmosphere` (z-0, `pointer-events:none`) / `.layer` (z-1) split, the `--page-bg-image` / `--vignette` / `--bg` / `--accent` / `--tile-*` tokens, the `--t-transition` timing, and the global `@media (prefers-reduced-motion: reduce)` block. No parallel styling system (NF-M14-1).
+- Every new rule is scoped under `.theme-horror …` or `.theme-sea …`. Nothing is added to `:root` neutrals, `html,body`, the shared `.atmosphere`/`.layer`/`.theme-toggle` base, or any landing selector (`.horror-map*`/`.sea-map*`/`.horror-landing`/`.sea-landing`/`.horror-ambient`/`.sea-ambient`) — the M9/M10 maps are byte-untouched (NF-M14-5).
+
+## 14.2 Art technique — RESOLVES Q-M14-1 / Q-M14-2 / Q-M14-6
+
+**Recommendation: pure CSS + inline SVG, NO new raster asset** (Q-M14-1 → CSS/SVG arm of the hybrid; Q-M14-2 → **evocative-but-recognizable**; Q-M14-6 → **uniform per theme**). This is a firmer choice than the PM's "hybrid (optional webp backdrop)" lean — the optional backdrop is explicitly **deferred**, not shipped, with rationale below.
+
+Rationale tied to the gates:
+- **NF-M14-3 (no heavy assets):** the corridor field, moonlit glow, fog, ambient decor, and the photo frame can all be produced from gradients + the existing inline-SVG vocabulary at **near-zero added bytes** (the M9 per-level Horror scene already proves this for one theme). A raster backdrop would add a network request per theme (M9 map ≈640 KB JPG, M10 map ≈214 KB WebP) that must not block first paint / ambient audio / slide preload — a cost with no functional payoff for a backdrop that mostly sits behind an opaque framed photo. Pure CSS/SVG sidesteps R-M14-4 entirely.
+- **NF-M14-1 (reuse the token + `.atmosphere` system):** the environment is composed exactly as §8 does — the field via the `.theme-* --page-bg-image` token, the focal glow + vignette via the `--vignette` token, fog via `.atmosphere::before/::after`, scenery via inline `<svg>` inside `.atmosphere`. No new mechanism.
+- **Uniform per theme (Q-M14-6):** one Horror room scene + one Sea shore scene, identical for all `level_id`s. This keeps the diff theme-symmetric and — critically — needs **NO new SSR context var** (see §14.6 / Q-M14-7). Per-level variation is a future enhancement.
+
+### How the environment is composed in CSS (per theme, all inside `.atmosphere`, back→front)
+- **Horror — "inside a moonlit room":** extend the existing corridor vocabulary into a room reading. (a) `--page-bg-image` keeps the navy field; (b) `--vignette` keeps the central moonlit-doorway glow + enclosed edges; (c) add Horror-level-scoped `.layer` divs INSIDE `.atmosphere` for an **evocative room**: a far **wall** band (flat dark gradient, upper ~62%), a **floorboard** band (a `repeating-linear-gradient` in perspective via a low skew/scale, lower ~38%), and a **baseboard/skirting** seam line where they meet — all gradient-only, no raster. The existing `.horror-scene` (doorway glow / cloaked figure / edge claws) and fog bands remain, now reading as the room's window + occupant + corner shadows. (d) optional faint **picture-rail** shadow framing the centerpiece.
+- **Sea — "sunlit shore" (NEW, mirrors the Horror scene contract):** the Sea `.atmosphere` is empty today; M14 adds a Sea-scoped inline-SVG **`.sea-scene`** block (the structural twin of `.horror-scene`) + gradient layers: (a) a `--page-bg-image`/`--vignette`-driven **sky→sea→sand** vertical field (azure top, `#7dd3fc`/`#38bdf8` mid, warm sand foreground — reuse the existing `.theme-sea` token palette); (b) `.layer` gradient bands for a **horizon line**, a **shoreline/surf** arc, and **sand** foreground; (c) inline-SVG `.sea-silhouette--*` shapes mirroring the Horror silhouette set: a low **sun/cloud glow** (twin of `--doorway`), a **palm/island** silhouette off to one side (twin of `--figure`, anchored low so it never sits behind the photo), and **wave/foam** edge shapes (twin of `--claw-left/right`, anchored to the L/R viewport edges). All `focusable="false"`, `aria-hidden`, `pointer-events:none`.
+
+> **Optional illustrated backdrop (deferred, documented hook):** if the user later wants more literal scenery, the SINGLE integration point per theme is the `--page-bg-image` token (`.theme-horror`/`.theme-sea`), exactly as §8.3's "Raster fallback" describes — `url(/static/img/{horror,light}/level-bg.webp)`, budget **≤300 KB WebP, ~1600px, `decoding`/`background-attachment:fixed`**, with the CSS fog/glow/decor remaining as overlays on top. This is the L5 task and is **skipped under the recommended default** (mirrors M9 H5). Not shipped in M14 unless Q-M14-1 is overridden at sign-off.
+
+## 14.3 Level-page `.atmosphere` layering model (BOTH themes)
+
+The level page keeps the §8.2 invariant — decorative layers at z-0 behind content at z-1 — and generalizes it to (a) a Sea scene and (b) reused landing decor. **Stacking order, back → front (all decor `pointer-events:none`, `aria-hidden`):**
+
+```
+z-index   layer                              mechanism / scope
+-------   --------------------------------   --------------------------------------------------------
+ (paint)  theme field gradient               html,body background ← --page-bg-image (.theme-* token)
+   0      .atmosphere (existing div)          fixed full-viewport overlay, pointer-events:none, aria-hidden
+            ├─ background: --vignette         focal glow + vignette (token, per theme)
+            ├─ ::before / ::after → fog/haze  Horror fog bands (exist); Sea: optional soft haze band
+            ├─ environment .layer bands       NEW: room wall/floor (Horror) | sky/sea/sand (Sea)
+            │     .theme-horror .level-env-*  |  .theme-sea .level-env-*   (gradient divs, z within atmosphere)
+            ├─ scene SVG                       Horror: .horror-scene (exists) | Sea: .sea-scene (NEW twin)
+            │     focusable="false", aria-hidden, inert — NO tabindex, NO interactive els
+            └─ ambient decor                   NEW level-page instance of the landing vocab:
+                  .level-ambient (NEW wrapper) Horror: .horror-ghost/-twinkle/-star spans
+                                               Sea:    .sea-balloon/-bird/-cloud spans
+   1      .layer (existing content wrapper)    header (logo + title + toggle), note, .level-stage, footer
+            └─ .level-stage                    framed-photo mount + backing scrim (R-M14-1) — OPAQUE on top
+                  └─ #slideshow / #track …     slideshow UNCHANGED; .slide-caption (M11) UNCHANGED
+   5      .slide-nav                           unchanged
+```
+
+Key design points:
+- **The Sea scene MIRRORS the Horror `.horror-scene` contract exactly.** `.sea-scene` is an inline-SVG wrapper inside `.atmosphere`, rendered in a `{% if theme == 'sea' %}` Jinja branch (the structural complement of the existing `{% if theme != 'sea' %}` guard around `.horror-scene`). Every `<svg>` carries `focusable="false"`; the wrapper and `.atmosphere` stay `aria-hidden="true"`; no element gets `tabindex` or is interactive. This satisfies the `tests/test_horror_atmosphere.py`-style `.atmosphere` invariants for the Sea arm (NF-M14-4/NF-M14-7).
+- **Decor reuse without leaking into the landing (R-M14-3).** The landing wraps its decor in `.horror-ambient`/`.sea-ambient` (`position:absolute; inset:0`, sized to the full-bleed map). The level page introduces a SEPARATE wrapper — **`.level-ambient`** (a new neutral class; theme-scoped rules supply palette/positioning) — placed inside the level page's `.atmosphere`. The reused leaf spans (`.horror-ghost`/`-twinkle`/`-star`, `.sea-balloon`/`-bird`/`-cloud`) keep their existing `@keyframes` + per-instance `--N` timing/position rules (which are NOT container-scoped), so they animate identically WITHOUT any edit to the landing's `.horror-ambient`/`.sea-ambient` rules or markup. Because `.sea-balloon` etc. are styled under `.theme-sea .sea-balloon { … }` (not under `.sea-ambient .sea-balloon`), placing them in `.theme-sea .level-ambient` reuses the SAME rules; the Sea landing is byte-unchanged. (If any positional rule turns out to be authored as `.sea-ambient .sea-balloon`, the L4 task duplicates only that selector under `.level-ambient`, never edits the `.sea-ambient` one — verified at L7.)
+- **Namespacing:** new level-page environment classes use a `level-env-*` family (e.g. `.level-env-wall`, `.level-env-floor`, `.level-env-sky`, `.level-env-sand`) and `.level-ambient` for the decor wrapper — all only ever styled under a `.theme-horror`/`.theme-sea` prefix. No bare rules; no collision with landing `.horror-*`/`.sea-*` map classes.
+
+## 14.4 Framed-centerpiece + legibility guard — RESOLVES Q-M14-3 (R-M14-1)
+
+**Recommendation: pure CSS/SVG frame, no raster frame asset** (Q-M14-3 → CSS/SVG arm), built ON the existing `.level-stage` mount so the slideshow markup is untouched.
+
+- **Construction.** The frame is the **`.level-stage` panel itself**, theme-skinned: a thick themed border + layered `box-shadow` (outer drop shadow for lift, inner bevel for depth) + ornamental **corner SVGs** placed as `.level-stage` children or `::before/::after` (inline SVG / CSS, `aria-hidden`, `pointer-events:none`). Horror = an **ornate gilded portrait frame** (warm amber/brass gradient border, scrollwork corner SVGs, `--accent`-tinted inner bevel). Sea = a **driftwood / rope-and-shell** frame (weathered tan border, knot/shell corner SVGs, soft `--tile-shadow` lift). The slideshow (`#slideshow` / `#track` / `.slide` / `.slide-img`) sits inside the mount **completely unchanged**.
+- **Legibility guard (R-M14-1 — the R-H5 guard generalized to BOTH themes).** The frame mount is an **opaque-enough panel** sitting on `.layer` (z-1) ON TOP of the z-0 scene, so the field/glow/fog/decor can never bleed through onto the photo. Concretely: keep the existing `.theme-horror .level-stage` opaque dark backing + `inset` scrim and the `.theme-horror .slideshow` radial scrim; ADD the symmetric `.theme-sea .level-stage` treatment — an opaque light sand/parchment backing + soft inner scrim — so the Sea photo is equally protected against the brighter sky/sea field. The M11 `.slide-caption` (theme-skinned bottom-gradient `<figcaption>`) already carries its own scrim and is preserved verbatim; its contrast over the framed photo is re-verified at QA. Heading, fallback note, footer, toggle, and slide dots/nav each get a backing/scrim where the scene would otherwise reduce them below WCAG AA (checked at L7).
+
+## 14.5 Reduced-motion + responsive plans
+
+- **Reduced motion (NF-M14-4, R-M14-5).** Follow the existing M9 pattern exactly: every new animation (Sea-scene drift, Horror room nothing-new, reused ambient spans on the level page) is `transform`/`opacity`-only and is FROZEN to a steady static frame by EXTENDING the existing `@media (prefers-reduced-motion: reduce)` block in `static/style.css`. The reused `.horror-ghost`/`-twinkle`/`-star` and `.sea-balloon`/`-bird`/`-cloud` spans are ALREADY frozen by the existing reduce rules (they match the same selectors), so bringing them to the level page inherits the freeze for free; only the NEW `.sea-scene`/`.level-env-*` motion (if any — most env bands are static gradients) needs an added freeze rule. No flicker exceeds the M9 "well under 3 flashes/sec" bar (R-H3). Shooting-star streaks reuse the existing reduce rule that hides them (no stray mid-sky dot).
+- **Responsive (M14R9, R-M14-6).** Mirror the M9/M10 mobile approach. The frame `border`/`box-shadow`/corner-SVG **scale down** via `clamp()`/breakpoints so they never crowd the photo; the `.level-stage` padding tightens at ≤480px (matching the existing `.slide-caption` mobile rule). Ambient decor **thins** on small screens (reduce instance count visibility / shrink via the existing `clamp()` width rules, as M9 does for `.horror-ghost` at ≤480px). The environment gradient bands are viewport-relative (`%`/`vh`) so they reflow without horizontal scroll or focal-point loss; the framed photo stays the centerpiece at every width (`.slide-img` keeps `max-height:70vh; object-fit:contain`). No focal loss, no photo crowding — verified on the L7 mobile pass.
+
+## 14.6 Data-flow / impact proof — ZERO backend change
+
+**The `level_page` route signature and context dict are UNCHANGED.** As-built in `app/main.py`:
+
+```python
+@app.get("/level/{level_id}")
+def level_page(request: Request, level_id: int):
+    theme = read_theme(request)
+    cache = cloudinary_service.get_cache()
+    available = level_id in cache.folder_index
+    return templates.TemplateResponse(
+        request, "level.html",
+        {"theme": theme, "level_id": level_id,
+         "available": available, "audio_track_ids": _local_audio_ids(theme)},
+    )
+```
+
+- **Q-M14-7 → NO new SSR context var.** Because the environment is **uniform per theme** (Q-M14-6), the template needs only the EXISTING vars (`theme` picks Horror-room vs Sea-shore scene + Room/Island wording; `available` picks slideshow vs fallback presentation; `level_id` drives the heading; `audio_track_ids` is untouched). The single additive `level_page` context field that §16.2/NF-M14-2 would permit is **NOT taken** — `app/main.py` is not touched at all. (It would only be needed if Q-M14-6 chose per-level scene variation, which the recommendation declines.)
+- **No new routes**, **no `/api/levels/{id}/photos` payload change** (the slideshow still `fetch`es the same contract and reads `images[].url` keyless Cloudinary CDN links + optional `caption`), **no Cloudinary/discovery change** (§13 untouched), **no audio-engine change** (`playAmbient`/`crossfadeToLevel` calls and the `localTrackIds` random-fallback logic are byte-identical).
+- **Before/after data-flow note.** *Before:* `GET /level/{id}` → SSR `level.html` (theme cookie) → client `fetch(/api/levels/{id}/photos)` → render slideshow over a flat dark/empty `.atmosphere` (Horror has a scene; Sea has none) → audio crossfade. *After:* **identical data flow** — same route, same SSR context, same fetch, same payload, same audio; ONLY the `level.html` markup inside `.atmosphere` + `.level-stage` and the theme-scoped `static/style.css` rules change, so the page paints a full-bleed scene + framed centerpiece instead of a void. The network/contract surface is unchanged.
+
+## 14.7 Contract-preservation checklist (NF-M14-7 — HARD GATE)
+
+Every `level.html` contract the suite asserts (enumerated in REQUIREMENTS §16.2; sources: `tests/test_frontend.py`, `tests/test_horror_atmosphere.py`, `tests/test_sea_landing.py`) and how the redesign keeps it:
+
+| Contract (verbatim token) | Where asserted | How M14 preserves it |
+|---|---|---|
+| `<html lang="en" class="theme-{theme}">` | test_frontend `test_level_page_theme_class_*` | The root `<html>`/`<body>` class lines are NOT edited; only inner markup changes. |
+| `class="theme-{theme} min-h-screen"` (on `<body>`) | test_frontend, test_sea_landing | Body tag untouched. |
+| `var levelId = {N};` | test_frontend `test_level_page_*` | The inline JS bootstrap (`var levelId = {{ level_id \| tojson }};`) is preserved verbatim. |
+| `var ssrAvailable = {true\|false};` | test_frontend missing/available | Preserved verbatim; the `available` var still drives both the JS audio branch and the new fallback-vs-slideshow presentation. |
+| `fetch("/api/levels/" + levelId + "/photos"` (literal) | test_frontend (avail + missing) | The photos fetch + `renderImages`/`startLevelAudio` JS is preserved byte-for-byte (slideshow logic untouched — M14R4). |
+| `id="slideshow"` (+ `#track`, `.slide`, `.slide-img`, dots/nav) | test_frontend | The slideshow DOM lives unchanged inside the new framed `.level-stage` mount. |
+| `id="theme-toggle"` + `aria-label="Toggle between Horror and Sea themes"` | test_frontend `test_theme_toggle_present_on_level_pages` | The toggle button is preserved (re-placed/re-styled into the scene header only — M14R6). |
+| Toggle label copy "Sail to the Sea" / "Enter the Corridor" | test_frontend `test_theme_toggle_label_swaps_with_theme` | The `{% if theme == 'sea' %}…{% endif %}` label text is preserved verbatim. |
+| `salvaged fallback content` (missing-level note) | test_frontend `test_level_page_missing_*` | The `{% if not available %}` note RETAINS the literal substring `salvaged fallback content`; only its surrounding styling becomes a diegetic plaque/sign (M14R5). |
+| `.atmosphere` is `aria-hidden="true"` | test_horror_atmosphere | The `.atmosphere` div keeps `aria-hidden="true"`; all new env/scene/decor lives inside it. |
+| `horror-scene` present (Horror) with `focusable="false"` SVGs | test_horror_atmosphere | The existing `.horror-scene` block is preserved; the NEW `.sea-scene` mirrors it (`focusable="false"`, aria-hidden, inert). |
+| `.atmosphere` has NO interactive elements, NO `tabindex` | test_horror_atmosphere | New env bands are `<div>`/`<svg>` decor only; the Sea scene + `.level-ambient` add ZERO interactive elements and ZERO `tabindex` (NF-M14-4). |
+| M11 `.slide-caption` (per-slide `<figcaption>`) | test_captions / test_frontend | The `renderImages` caption branch (theme-picked line via `textContent`) is preserved verbatim (NF-M14-6). |
+| Static asset links: `style.css?v=N`, `theme.js`, `audio-engine.js` | test_frontend `test_level_page_links_all_static_assets` | All three `<link>`/`<script>` tags preserved (the `?v=N` may bump for cache-bust; the guard accepts any `?v=\d+`). |
+
+**Risk/ambiguity flags for the PM (fold into the L2 sign-off questions):**
+- **A1 (Q-M14-1 firmed beyond the PM lean).** The architect recommends pure-CSS/SVG with the illustrated backdrop **deferred** (not shipped), rather than the PM's "optional ONE budgeted webp per theme." If the user wants literal painted room/shore scenery now, that flips on the L5 asset task + the per-theme ≤300 KB budget. **Confirm at sign-off.**
+- **A2 (`?v=N` cache-bust bump).** Restyling `level.html` warrants bumping `style.css?v=6 → ?v=7` on BOTH templates (so returning visitors get the new CSS). The test guard accepts any `?v=\d+`, so this is contract-safe — but it touches `index.html`'s `<link>` too (one-line, no landing-behavior change). Flag so SECURITY's scope audit (L6) expects the two `<link>` edits.
+- **A3 (verify the decor selector scoping at L4/L7).** The reuse-without-leak plan (§14.3) assumes the ambient leaf rules are authored as `.theme-sea .sea-balloon { … }` (theme-scoped, container-agnostic) — confirmed for the keyframes + width/opacity rules, but the per-instance `top/left`/timing rules (`.sea-balloon--0 { left:5%; top:30% }`) are positioned for the LANDING's full-bleed map. The level page will likely want its OWN per-instance positions (a small set of `.theme-sea .level-ambient .sea-balloon--N` overrides), which must be ADDED, never edited onto the landing rule. QA (L7) must confirm the Sea/Horror LANDING decor is visually unchanged.
+- **A4 (no per-level variation).** The recommendation is uniform-per-theme (one room, one shore). If the user expected each island/room to look different per number, that reopens Q-M14-6 → Q-M14-7 (one additive SSR var) and expands the art/CSS effort. **Confirm "uniform is fine for M14."**
+- **A5 (frame asset vs CSS).** Q-M14-3 recommended as pure CSS/SVG. If the user wants a photographed gilded/driftwood frame texture, that adds a (small) raster asset per theme — flag the same budget/`decoding` handling as A1.

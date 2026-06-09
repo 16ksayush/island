@@ -1,0 +1,345 @@
+/* =========================================================================
+   M14 mockup stylesheet — level-page atmospheric scene (BOTH themes).
+   Look/feel artifact for sign-off. The real build moves these rules into
+   theme-scoped blocks in static/style.css and reuses the EXISTING tokens.
+   Tokens below mirror static/style.css :root / .theme-horror / .theme-sea.
+   Pure CSS + inline SVG. No raster backgrounds, no frame images.
+   ========================================================================= */
+
+:root {
+  --t-transition: 1.5s;
+  --bg: #0d0d0d; --bg-2: #161616; --fg: #f4f4f4; --muted: #9a9a9a;
+  --accent: #ffb000; --accent-soft: rgba(255,176,0,0.18);
+  --tile-bg: #1a1a1a; --tile-border: #2a2a2a; --tile-shadow: rgba(0,0,0,0.6);
+  --vignette: radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(0,0,0,0.85) 100%);
+  --page-bg-image: none;
+}
+
+.theme-horror {
+  --bg: #0a0e1a; --bg-2: #121a2e; --fg: #ede4d3; --muted: #a99e89;
+  --accent: #ffb000; --accent-soft: rgba(255,176,0,0.16);
+  --tile-bg: #1c1714; --tile-border: #3a2f1c; --tile-shadow: rgba(0,0,0,0.75);
+  --vignette:
+    radial-gradient(ellipse 30% 45% at 50% 42%, rgba(190,205,235,0.16), transparent 60%),
+    radial-gradient(ellipse at center, rgba(0,0,0,0) 22%, rgba(2,4,10,0.92) 100%);
+  --page-bg-image:
+    radial-gradient(ellipse at 50% -5%, rgba(150,170,210,0.1), transparent 55%),
+    linear-gradient(180deg, #0d1322 0%, #0a0e1a 60%, #05070d 100%);
+}
+
+.theme-sea {
+  --bg: #e0f2fe; --bg-2: #bae6fd; --fg: #0c4a6e; --muted: #3b7da3;
+  --accent: #0284c7; --accent-soft: rgba(2,132,199,0.15);
+  --tile-bg: #fef9ef; --tile-border: #fcd9a8; --tile-shadow: rgba(2,132,199,0.25);
+  --vignette: radial-gradient(ellipse at center, rgba(255,255,255,0.12) 40%, rgba(2,132,199,0.18) 100%);
+  --page-bg-image:
+    radial-gradient(circle at 80% 12%, rgba(255,236,173,0.7), transparent 40%),
+    linear-gradient(180deg, #e0f2fe 0%, #7dd3fc 55%, #38bdf8 100%);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; min-height: 100%;
+  color: var(--fg);
+  background-color: var(--bg);
+  background-image: var(--page-bg-image);
+  background-attachment: fixed;
+  font-family: "Georgia", "Times New Roman", serif;
+  transition: background-color var(--t-transition) ease, color var(--t-transition) ease;
+}
+.theme-sea, .theme-sea body { font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+
+/* ---- z-stack: atmosphere (z0, behind) / layer (z1, content) ------------- */
+.atmosphere {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  overflow: hidden; background: var(--vignette);
+  transition: background var(--t-transition) ease;
+}
+.layer { position: relative; z-index: 1; }
+
+/* =========================================================================
+   HORROR — "inside a moonlit room" ENVIRONMENT (.level-env-*) + scene
+   ========================================================================= */
+/* Back wall: upper ~62%, dark navy with faint panel seams. */
+.theme-horror .level-env-wall {
+  position: absolute; left: 0; right: 0; top: 0; height: 62%;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 120px),
+    linear-gradient(180deg, #10172a 0%, #0b1020 70%, #0a0e1a 100%);
+}
+/* Floorboards: lower ~38%, perspective via skew/scale + fade toward wall. */
+.theme-horror .level-env-floor {
+  position: absolute; left: -20%; right: -20%; bottom: 0; height: 40%;
+  transform: perspective(520px) rotateX(58deg); transform-origin: top center;
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.35) 0 2px, transparent 2px 78px),
+    linear-gradient(180deg, #1a130c 0%, #120c07 60%, #0a0705 100%);
+}
+/* Moonlit baseboard seam where wall meets floor. */
+.theme-horror .level-env-floor::before {
+  content: ""; position: absolute; left: 16%; right: 16%; top: -2px; height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(190,205,235,0.5), transparent);
+  filter: blur(1px);
+}
+/* Picture-rail soft shadow behind the centerpiece. */
+.theme-horror .level-env-wall::after {
+  content: ""; position: absolute; left: 14%; right: 14%; top: 22%; height: 46%;
+  border-radius: 16px;
+  box-shadow: 0 40px 90px 10px rgba(0,0,0,0.55);
+}
+
+/* horror-scene (mirrors the real .horror-scene contract) */
+.theme-horror .horror-scene { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.theme-horror .horror-silhouette { position: absolute; pointer-events: none; display: block; }
+.theme-horror .horror-silhouette--doorway {
+  top: 9%; left: 50%; width: clamp(120px,16vw,240px); transform: translateX(-50%);
+  opacity: 0.5; animation: hr-glow-flicker 7s ease-in-out infinite;
+}
+.theme-horror .horror-silhouette--figure {
+  bottom: 0; left: 14%; width: clamp(90px,11vw,150px); transform: translateX(-50%); opacity: 0.16;
+}
+.theme-horror .horror-silhouette--claw-left  { bottom: 8%;  left: 0;  width: clamp(70px,9vw,130px); opacity: 0.2; }
+.theme-horror .horror-silhouette--claw-right { bottom: 14%; right: 0; width: clamp(70px,9vw,130px); opacity: 0.2; transform: scaleX(-1); }
+
+/* Fog bands — subtle on the level page. */
+.theme-horror .atmosphere::before, .theme-horror .atmosphere::after {
+  content: ""; position: absolute; left: -25%; width: 150%; pointer-events: none;
+}
+.theme-horror .atmosphere::before {
+  bottom: -6%; height: 30%;
+  background: linear-gradient(0deg, rgba(150,168,200,0.12) 0%, rgba(140,158,190,0.06) 45%, transparent 100%);
+  filter: blur(22px); opacity: 0.7; animation: hr-fog-a 58s linear infinite alternate;
+}
+.theme-horror .atmosphere::after {
+  bottom: 4%; height: 22%;
+  background: linear-gradient(0deg, rgba(160,178,210,0.08) 0%, rgba(150,168,200,0.04) 55%, transparent 100%);
+  filter: blur(28px); opacity: 0.55; animation: hr-fog-b 74s linear infinite alternate;
+}
+
+/* =========================================================================
+   SEA — "sunlit shore" ENVIRONMENT (.level-env-*) + .sea-scene (NEW twin)
+   ========================================================================= */
+.theme-sea .level-env-sky {
+  position: absolute; left: 0; right: 0; top: 0; height: 46%;
+  background: linear-gradient(180deg, #cdeefe 0%, #a8e0fb 60%, #93d6f7 100%);
+}
+.theme-sea .level-env-sea {
+  position: absolute; left: 0; right: 0; top: 44%; height: 34%;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.10) 0 1px, transparent 1px 22px),
+    linear-gradient(180deg, #38bdf8 0%, #0ea5e9 60%, #0284c7 100%);
+}
+/* crisp horizon highlight */
+.theme-sea .level-env-sea::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.85), transparent);
+}
+.theme-sea .level-env-sand {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 26%;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.25) 0 2px, transparent 3px) 0 0/40px 40px,
+    linear-gradient(180deg, #fde9bf 0%, #f6d79a 60%, #eec984 100%);
+}
+/* foam / shoreline arc where sea meets sand */
+.theme-sea .level-env-sand::before {
+  content: ""; position: absolute; left: -5%; right: -5%; top: -10px; height: 26px;
+  background: radial-gradient(60% 120% at 50% 100%, rgba(255,255,255,0.85), transparent 70%);
+  filter: blur(2px);
+}
+
+/* .sea-scene — structural twin of .horror-scene (NEW) */
+.theme-sea .sea-scene { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.theme-sea .sea-silhouette { position: absolute; pointer-events: none; display: block; }
+.theme-sea .sea-silhouette--sun {
+  top: 6%; right: 12%; width: clamp(90px,12vw,180px);
+  opacity: 0.75; animation: sea-sun-breathe 9s ease-in-out infinite;
+}
+.theme-sea .sea-silhouette--palm {
+  bottom: 0; left: 9%; width: clamp(120px,16vw,220px); opacity: 0.92;
+  filter: drop-shadow(0 6px 10px rgba(2,80,130,0.25));
+}
+.theme-sea .sea-silhouette--wave-left  { bottom: 4%; left: 0;  width: clamp(80px,11vw,150px); opacity: 0.5; }
+.theme-sea .sea-silhouette--wave-right { bottom: 9%; right: 0; width: clamp(80px,11vw,150px); opacity: 0.5; transform: scaleX(-1); }
+
+/* =========================================================================
+   AMBIENT DECOR wrapper (.level-ambient) — reuses landing leaf spans
+   ========================================================================= */
+.level-ambient { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+
+/* Horror reused leaves */
+.theme-horror .horror-ghost {
+  position: absolute; width: clamp(26px,3vw,46px); fill: rgba(210,222,245,0.5);
+  opacity: 0.34; animation: hr-ghost 34s ease-in-out infinite;
+}
+.theme-horror .level-ambient .horror-ghost--0 { left: 4%;  top: 30%; animation-duration: 31s; }
+.theme-horror .level-ambient .horror-ghost--1 { right: 5%; top: 24%; animation-duration: 38s; animation-delay: 6s; }
+.theme-horror .horror-twinkle {
+  position: absolute; width: 4px; height: 4px; border-radius: 50%;
+  background: #dfe7ff; box-shadow: 0 0 6px 2px rgba(200,214,255,0.6);
+  animation: hr-twinkle 6s ease-in-out infinite;
+}
+.theme-horror .level-ambient .horror-twinkle--0 { left: 16%; top: 7%; }
+.theme-horror .level-ambient .horror-twinkle--1 { left: 70%; top: 5%; animation-delay: 2s; }
+.theme-horror .level-ambient .horror-twinkle--2 { left: 46%; top: 10%; animation-delay: 3.5s; }
+
+/* Sea reused leaves */
+.theme-sea .sea-balloon {
+  position: absolute; width: clamp(28px,4vw,56px);
+  filter: drop-shadow(0 4px 8px rgba(2,80,130,0.25));
+  opacity: 0; animation: sea-balloon 48s ease-in-out infinite;
+}
+.theme-sea .level-ambient .sea-balloon--0 { left: 6%;  top: 14%; --bln-a:#0284c7; --bln-b:#38bdf8; --bln-c:#0369a1; }
+.theme-sea .level-ambient .sea-balloon--1 { right: 8%; top: 9%;  --bln-a:#f97316; --bln-b:#fb923c; --bln-c:#ea580c; animation-delay: 14s; }
+.theme-sea .sea-bird {
+  position: absolute; width: clamp(18px,2.4vw,34px); opacity: 0; animation: sea-bird 30s linear infinite;
+}
+.theme-sea .level-ambient .sea-bird--0 { left: -6%; top: 10%; }
+.theme-sea .level-ambient .sea-bird--1 { left: -6%; top: 16%; animation-delay: 9s; }
+.theme-sea .sea-cloud {
+  position: absolute; width: clamp(70px,11vw,140px); opacity: 0; filter: blur(1px);
+  animation: sea-cloud 72s linear infinite;
+}
+.theme-sea .level-ambient .sea-cloud--0 { left: -14%; top: 6%; }
+
+/* =========================================================================
+   CONTENT layout (the .layer) — header / note / FRAMED stage / footer
+   ========================================================================= */
+.scene-shell { position: relative; z-index: 1; max-width: 64rem; margin: 0 auto; padding: 1.5rem 1rem 3rem;
+  min-height: 100vh; display: flex; flex-direction: column; }
+.scene-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.scene-header .left { display: flex; align-items: center; gap: 1rem; }
+.app-logo {
+  width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center;
+  font-weight: 700; background: var(--accent-soft); border: 1px solid var(--accent); color: var(--accent);
+}
+.page-title { letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 0; font-size: clamp(1.3rem,3vw,1.9rem); }
+.theme-horror .page-title { text-shadow: 0 0 14px rgba(255,176,0,0.35); }
+.theme-sea .page-title { text-shadow: 0 1px 0 rgba(255,255,255,0.6); }
+
+.theme-toggle {
+  display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.9rem;
+  border: 1px solid var(--accent); border-radius: 999px; background: var(--accent-soft);
+  color: var(--fg); font: inherit; font-size: 0.9rem; cursor: pointer;
+  transition: background var(--t-transition) ease, transform 0.15s ease;
+}
+.theme-toggle:hover { transform: translateY(-1px); }
+.theme-sea .theme-toggle { backdrop-filter: blur(2px); }
+
+.muted { color: var(--muted); }
+.scene-footer { margin-top: auto; padding-top: 2rem; text-align: center; color: var(--muted); font-size: 0.8rem; }
+
+/* ---- THE FRAME: .level-stage as a themed ornate mount ------------------- */
+.level-stage {
+  position: relative; border-radius: 14px; padding: 1.6rem; align-self: center;
+  width: 100%; max-width: 52rem;
+}
+/* Horror: gilded portrait frame + opaque dark backing (R-M14-1 guard). */
+.theme-horror .level-stage {
+  background-color: #0a0d16;
+  background-image: linear-gradient(180deg, #0c1120 0%, #070a13 100%);
+  border: clamp(8px,1.4vw,16px) solid transparent;
+  border-image: linear-gradient(135deg, #7a5410, #ffce6b, #b67e1b, #ffce6b, #7a5410) 1;
+  box-shadow:
+    0 28px 60px -10px rgba(0,0,0,0.8),          /* lift off the wall */
+    inset 0 0 0 2px rgba(255,206,107,0.35),     /* inner gilt line */
+    inset 0 0 120px rgba(0,0,0,0.85);           /* keep photo dark/legible */
+}
+/* Sea: driftwood + light sand backing + soft inner scrim (symmetric guard). */
+.theme-sea .level-stage {
+  background-image: linear-gradient(180deg, #fffaf0, #fdeecb);
+  border: clamp(8px,1.4vw,16px) solid transparent;
+  border-image: linear-gradient(135deg, #b98a55, #e8c79a, #9c7440, #e8c79a, #b98a55) 1;
+  box-shadow:
+    0 18px 36px rgba(2,132,199,0.28),
+    inset 0 0 0 2px rgba(156,116,64,0.3),
+    inset 0 0 70px rgba(255,255,255,0.5);
+}
+
+/* Ornamental corner SVGs (aria-hidden, pointer-events:none) */
+.frame-corner { position: absolute; width: clamp(28px,5vw,56px); height: clamp(28px,5vw,56px); pointer-events: none; }
+.frame-corner--tl { top: -6px; left: -6px; }
+.frame-corner--tr { top: -6px; right: -6px; transform: scaleX(-1); }
+.frame-corner--bl { bottom: -6px; left: -6px; transform: scaleY(-1); }
+.frame-corner--br { bottom: -6px; right: -6px; transform: scale(-1,-1); }
+@media (max-width: 480px) { .frame-corner { display: none; } }
+
+/* ---- Slideshow (placeholder for the real #slideshow markup) ------------- */
+.slideshow { position: relative; width: 100%; border-radius: 10px; }
+.theme-horror .slideshow { background: radial-gradient(ellipse at center, rgba(0,0,0,0.35), rgba(0,0,0,0.55)); }
+.slide { position: relative; display: flex; align-items: center; justify-content: center; min-height: 42vh; }
+.slide-img {
+  max-width: 100%; max-height: 60vh; width: auto; height: auto; object-fit: contain;
+  border-radius: 8px; border: 1px solid var(--tile-border); background: var(--bg-2); display: block;
+}
+.slide-caption {
+  position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: 1.75rem 1.1rem 0.85rem;
+  text-align: center; font-size: 0.95rem; border-radius: 0 0 8px 8px; pointer-events: none;
+}
+.theme-horror .slide-caption {
+  color: #ffd98a; font-family: "Georgia", serif; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  background: linear-gradient(to top, rgba(5,7,13,0.92), rgba(5,7,13,0.6) 55%, rgba(5,7,13,0));
+}
+.theme-sea .slide-caption {
+  color: #06324d; font-family: system-ui, sans-serif; font-weight: 600;
+  text-shadow: 0 1px 2px rgba(255,255,255,0.75);
+  background: linear-gradient(to top, rgba(240,249,255,0.94), rgba(240,249,255,0.62) 55%, rgba(240,249,255,0));
+}
+.slide-dots { display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem; color: var(--accent); }
+.slide-dot { width: 0.6rem; height: 0.6rem; border: none; border-radius: 999px; background: currentColor; opacity: 0.3; cursor: pointer; }
+.slide-dot.is-active { opacity: 1; }
+.slide-nav {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 5;
+  width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border: none;
+  border-radius: 999px; cursor: pointer; font-size: 1.6rem; color: #fff; background: rgba(0,0,0,0.45);
+}
+.slide-prev { left: 0.5rem; } .slide-next { right: 0.5rem; }
+
+/* ---- Diegetic fallback note (.level-note) — plaque / signpost ----------- */
+.level-note {
+  align-self: center; max-width: 52rem; width: 100%; margin: 0 0 1rem;
+  padding: 0.7rem 1.1rem; text-align: center; font-size: 0.92rem; border-radius: 8px;
+}
+.theme-horror .level-note {            /* worn brass plaque */
+  color: #f4d58a; font-family: "Georgia", serif; letter-spacing: 0.04em;
+  background: linear-gradient(180deg, #2a2415, #1b1810);
+  border: 1px solid #6b5410; box-shadow: inset 0 1px 0 rgba(255,206,107,0.25), 0 6px 16px rgba(0,0,0,0.5);
+  text-shadow: 0 1px 1px rgba(0,0,0,0.8);
+}
+.theme-sea .level-note {               /* weathered driftwood signpost */
+  color: #1f4a63; font-family: system-ui, sans-serif; font-weight: 600;
+  background: repeating-linear-gradient(90deg, #efdcb6 0 14px, #e8d2a6 14px 28px);
+  border: 1px solid #c2a36e; box-shadow: 0 6px 16px rgba(2,132,199,0.2);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+}
+
+/* =========================================================================
+   Keyframes (transform/opacity only)
+   ========================================================================= */
+@keyframes hr-glow-flicker { 0%,100% { opacity: 0.42; } 50% { opacity: 0.58; } }
+@keyframes hr-fog-a { from { transform: translateX(-4%); } to { transform: translateX(6%); } }
+@keyframes hr-fog-b { from { transform: translateX(5%); } to { transform: translateX(-5%); } }
+@keyframes hr-ghost { 0% { transform: translateY(8px); opacity: 0.18; } 50% { transform: translateY(-14px); opacity: 0.4; } 100% { transform: translateY(8px); opacity: 0.18; } }
+@keyframes hr-twinkle { 0%,100% { opacity: 0.25; } 50% { opacity: 0.9; } }
+@keyframes sea-sun-breathe { 0%,100% { opacity: 0.68; } 50% { opacity: 0.82; } }
+@keyframes sea-balloon { 0% { transform: translate(0,40px) scale(0.9); opacity: 0; } 15% { opacity: 0.85; } 50% { transform: translate(22px,-60px) scale(1); opacity: 0.9; } 85% { opacity: 0.6; } 100% { transform: translate(-10px,-150px) scale(1.05); opacity: 0; } }
+@keyframes sea-bird { 0% { transform: translate(0,0) scale(0.8); opacity: 0; } 10% { opacity: 0.55; } 50% { transform: translate(56vw,-14px) scale(1); opacity: 0.5; } 90% { opacity: 0.45; } 100% { transform: translate(112vw,8px) scale(0.85); opacity: 0; } }
+@keyframes sea-cloud { 0% { transform: translateX(0); opacity: 0; } 12% { opacity: 0.75; } 88% { opacity: 0.6; } 100% { transform: translateX(128vw); opacity: 0; } }
+
+/* ---- Responsive: thin decor / tighten the frame on small screens -------- */
+@media (max-width: 480px) {
+  .level-stage { padding: 0.9rem; }
+  .slide-caption { font-size: 0.82rem; padding: 1.4rem 0.7rem 0.65rem; }
+  .theme-horror .level-ambient .horror-ghost--1,
+  .theme-sea .level-ambient .sea-balloon--1 { display: none; }
+}
+
+/* ---- Reduced motion: freeze every new + reused animation ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .theme-horror .horror-silhouette--doorway { animation: none !important; opacity: 0.5; }
+  .theme-horror .atmosphere::before, .theme-horror .atmosphere::after { animation: none !important; transform: translateX(0); }
+  .theme-horror .horror-ghost { animation: none !important; transform: none; opacity: 0.32; }
+  .theme-horror .horror-twinkle { animation: none !important; opacity: 0.5; }
+  .theme-sea .sea-silhouette--sun { animation: none !important; opacity: 0.75; }
+  .theme-sea .sea-balloon, .theme-sea .sea-bird, .theme-sea .sea-cloud { animation: none !important; opacity: 0.5; }
+}

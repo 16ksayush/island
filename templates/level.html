@@ -9,12 +9,18 @@
     </title>
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/style.css?v=6" />
+    <link rel="stylesheet" href="/static/style.css?v=7" />
   </head>
 
   <body class="theme-{{ theme }} min-h-screen">
     <div class="atmosphere" aria-hidden="true">
       {% if theme != 'sea' %}
+      <!-- M14 Horror ENVIRONMENT bands: pure-CSS gradient back wall + receding
+           floorboards (+ baseboard seam, picture-rail shadow via ::before/::after
+           in style.css). Plain decorative divs, no interactivity. -->
+      <div class="level-env-wall"></div>
+      <div class="level-env-floor"></div>
+
       <!-- M9 horror-only decorative scene (FULL corridor, R-H6): same inline
            SVG silhouettes as the landing, behind the slideshow stage (.layer,
            z-1). The .level-stage backing scrim (style.css) keeps the glow/fog
@@ -41,6 +47,96 @@
         </svg>
         <svg class="horror-silhouette horror-silhouette--claw-right" viewBox="0 0 80 120" preserveAspectRatio="xMinYMax meet" focusable="false">
           <path fill="#02040a" d="M0 60c10-2 18-6 26-12 3 14 4 27 3 40-1-9-3-17-7-24 6 10 9 21 9 33-3-10-7-19-13-26 4 11 6 22 5 33-4-12-9-22-16-31 1 12 1 23-1 34C-2 110-2 84 0 60z" />
+        </svg>
+      </div>
+
+      <!-- M14 ambient decor REUSED from the landing, on the NEW .level-ambient
+           wrapper (distinct from the landing's .horror-ambient). Per-instance
+           positions are added under `.theme-horror .level-ambient .*--N` only,
+           never onto the landing rules (R-M14-3). aria-hidden, pointer-events:
+           none; reuses the existing keyframes + reduced-motion freeze. -->
+      <div class="level-ambient" aria-hidden="true">
+        <svg class="horror-ghost horror-ghost--0" viewBox="0 0 50 64" focusable="false" aria-hidden="true">
+          <path d="M25 2C13 2 6 11 6 24v34l5-5 5 5 4-5 5 5 5-5 4 5 5-5V24C44 11 37 2 25 2z" />
+          <circle cx="19" cy="25" r="2.6" fill="#0a0e1a" />
+          <circle cx="31" cy="25" r="2.6" fill="#0a0e1a" />
+        </svg>
+        <svg class="horror-ghost horror-ghost--1" viewBox="0 0 50 64" focusable="false" aria-hidden="true">
+          <path d="M25 2C13 2 6 11 6 24v34l5-5 5 5 4-5 5 5 5-5 4 5 5-5V24C44 11 37 2 25 2z" />
+          <circle cx="19" cy="25" r="2.6" fill="#0a0e1a" />
+          <circle cx="31" cy="25" r="2.6" fill="#0a0e1a" />
+        </svg>
+        <span class="horror-twinkle horror-twinkle--0" aria-hidden="true"></span>
+        <span class="horror-twinkle horror-twinkle--1" aria-hidden="true"></span>
+        <span class="horror-twinkle horror-twinkle--2" aria-hidden="true"></span>
+      </div>
+      {% else %}
+      <!-- M14 SEA ENVIRONMENT bands: pure-CSS gradient sky + sea (+ crisp horizon
+           highlight) + warm sand foreground (+ foam shoreline arc via ::before in
+           style.css). Fills the previously-EMPTY Sea .atmosphere. Plain divs. -->
+      <div class="level-env-sky"></div>
+      <div class="level-env-sea"></div>
+      <div class="level-env-sand"></div>
+
+      <!-- M14 NEW .sea-scene — structural twin of .horror-scene (the complement
+           of the Horror theme guard above). Inline-SVG sun glow, a
+           palm/island silhouette anchored low + off-side (never behind the
+           photo), and L/R foam-wave shapes framing the edges. All focusable=
+           "false", aria-hidden, pointer-events:none — identically inert. -->
+      <div class="sea-scene" aria-hidden="true">
+        <svg class="sea-silhouette sea-silhouette--sun" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" focusable="false">
+          <defs>
+            <radialGradient id="sea-sun-lvl" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#fff7dc" stop-opacity="0.95" />
+              <stop offset="55%" stop-color="#ffe08a" stop-opacity="0.45" />
+              <stop offset="100%" stop-color="#ffe08a" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <circle cx="50" cy="50" r="46" fill="url(#sea-sun-lvl)" />
+        </svg>
+
+        <svg class="sea-silhouette sea-silhouette--palm" viewBox="0 0 120 160" preserveAspectRatio="xMidYMax meet" focusable="false">
+          <path d="M58 160c-2-36 0-70 4-96l8 1c-3 26-5 60-4 95z" fill="#5b3a1e" />
+          <path d="M62 64C44 50 24 50 8 60c18-2 34 4 50 16-18-22-2-44 22-52-18 4-30 18-18 40 6-26 30-36 56-32-24-2-42 14-52 36 14-20 40-24 64-12-22-12-46-6-68 8z" fill="#1f7a3d" />
+          <ellipse cx="60" cy="158" rx="44" ry="6" fill="#0284c7" opacity="0.18" />
+        </svg>
+
+        <svg class="sea-silhouette sea-silhouette--wave-left" viewBox="0 0 100 40" preserveAspectRatio="xMinYMax meet" focusable="false">
+          <path d="M0 30c12-10 22-10 34 0s22 10 34 0 22-10 32 0v10H0z" fill="#bfe9ff" opacity="0.8" />
+        </svg>
+        <svg class="sea-silhouette sea-silhouette--wave-right" viewBox="0 0 100 40" preserveAspectRatio="xMinYMax meet" focusable="false">
+          <path d="M0 30c12-10 22-10 34 0s22 10 34 0 22-10 32 0v10H0z" fill="#bfe9ff" opacity="0.8" />
+        </svg>
+      </div>
+
+      <!-- M14 ambient decor REUSED from the Sea landing, on the SAME new
+           .level-ambient wrapper. Per-instance positions live under
+           `.theme-sea .level-ambient .*--N` only — the landing's .sea-ambient
+           rules are never edited (R-M14-3, NF-M14-5). aria-hidden, pointer-
+           events:none; reuses the existing keyframes + reduced-motion freeze. -->
+      <div class="level-ambient" aria-hidden="true">
+        <svg class="sea-balloon sea-balloon--0" viewBox="0 0 60 90" focusable="false" aria-hidden="true">
+          <path d="M30 2C16 2 6 13 6 28c0 12 8 21 16 27h16c8-6 16-15 16-27C54 13 44 2 30 2z" fill="var(--bln-a)" />
+          <path d="M22 4c-7 4-12 13-12 24 0 11 5 21 12 27V4z" fill="var(--bln-b)" opacity="0.9" />
+          <path d="M38 4c7 4 12 13 12 24 0 11-5 21-12 27V4z" fill="var(--bln-c)" opacity="0.9" />
+          <rect x="25" y="56" width="10" height="3" rx="1" fill="#7a4a1f" />
+          <path d="M26 59l-1 9h10l-1-9z" fill="#9c6b35" />
+        </svg>
+        <svg class="sea-balloon sea-balloon--1" viewBox="0 0 60 90" focusable="false" aria-hidden="true">
+          <path d="M30 2C16 2 6 13 6 28c0 12 8 21 16 27h16c8-6 16-15 16-27C54 13 44 2 30 2z" fill="var(--bln-a)" />
+          <path d="M22 4c-7 4-12 13-12 24 0 11 5 21 12 27V4z" fill="var(--bln-b)" opacity="0.9" />
+          <path d="M38 4c7 4 12 13 12 24 0 11-5 21-12 27V4z" fill="var(--bln-c)" opacity="0.9" />
+          <rect x="25" y="56" width="10" height="3" rx="1" fill="#7a4a1f" />
+          <path d="M26 59l-1 9h10l-1-9z" fill="#9c6b35" />
+        </svg>
+        <svg class="sea-bird sea-bird--0" viewBox="0 0 40 16" focusable="false" aria-hidden="true">
+          <path d="M2 12C8 4 14 4 20 9c6-5 12-5 18 3-6-3-11-2-18 3-7-5-12-6-18-3z" fill="#3a5a72" />
+        </svg>
+        <svg class="sea-bird sea-bird--1" viewBox="0 0 40 16" focusable="false" aria-hidden="true">
+          <path d="M2 12C8 4 14 4 20 9c6-5 12-5 18 3-6-3-11-2-18 3-7-5-12-6-18-3z" fill="#3a5a72" />
+        </svg>
+        <svg class="sea-cloud sea-cloud--0" viewBox="0 0 100 44" focusable="false" aria-hidden="true">
+          <path d="M20 38c-9 0-16-6-16-14 0-7 6-13 14-13 2-7 9-11 16-11 9 0 16 6 18 14 7 0 13 5 13 12 0 7-6 12-14 12z" fill="#ffffff" />
         </svg>
       </div>
       {% endif %}
@@ -82,13 +178,37 @@
       </header>
 
       {% if not available %}
-      <p class="muted mb-4 text-sm" role="note">
+      <!-- M14: the sealed/missing note is restyled as a diegetic plaque (Horror)
+           / driftwood signpost (Sea) via .level-note. The literal substring
+           "salvaged fallback content" is RETAINED verbatim (HARD GATE NF-M14-7). -->
+      <p class="level-note" role="note">
         This {% if theme == 'sea' %}island has slipped beneath the waves{% else %}door is sealed{% endif %} —
         showing salvaged fallback content.
       </p>
       {% endif %}
 
       <main class="level-stage layer">
+        <!-- M14 CSS/SVG ornate frame corners (gilded Horror / driftwood-rope-shell
+             Sea via theme-scoped fills in style.css). Decorative children of the
+             .level-stage frame; aria-hidden, focusable="false", pointer-events:
+             none. They do NOT touch the slideshow markup inside. -->
+        <svg class="frame-corner frame-corner--tl" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path class="frame-scroll" d="M4 52V18C4 10 10 4 18 4h34" fill="none" stroke-width="2.5" />
+          <path class="frame-flourish" d="M10 30c6-2 10-8 12-16 4 6 9 9 16 10-7 2-12 6-15 14-2-7-7-11-13-8z" />
+        </svg>
+        <svg class="frame-corner frame-corner--tr" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path class="frame-scroll" d="M4 52V18C4 10 10 4 18 4h34" fill="none" stroke-width="2.5" />
+          <path class="frame-flourish" d="M10 30c6-2 10-8 12-16 4 6 9 9 16 10-7 2-12 6-15 14-2-7-7-11-13-8z" />
+        </svg>
+        <svg class="frame-corner frame-corner--bl" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path class="frame-scroll" d="M4 52V18C4 10 10 4 18 4h34" fill="none" stroke-width="2.5" />
+          <path class="frame-flourish" d="M10 30c6-2 10-8 12-16 4 6 9 9 16 10-7 2-12 6-15 14-2-7-7-11-13-8z" />
+        </svg>
+        <svg class="frame-corner frame-corner--br" viewBox="0 0 56 56" aria-hidden="true" focusable="false">
+          <path class="frame-scroll" d="M4 52V18C4 10 10 4 18 4h34" fill="none" stroke-width="2.5" />
+          <path class="frame-flourish" d="M10 30c6-2 10-8 12-16 4 6 9 9 16 10-7 2-12 6-15 14-2-7-7-11-13-8z" />
+        </svg>
+
         <div
           id="slideshow"
           class="slideshow"

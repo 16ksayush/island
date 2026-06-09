@@ -21,6 +21,7 @@ temp file. Cloudinary stays mocked via ``conftest.py`` (levels 1, 2, 8 present).
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -240,7 +241,10 @@ def test_level_page_contains_slide_caption_render_path(client):
 
 def test_level_page_links_versioned_stylesheet(client):
     html = client.get("/level/1").text
-    assert "/static/style.css?v=6" in html
+    # A2 sign-off bumped the cache-bust token (?v=6 -> ?v=7). Use a regex so the
+    # guard tracks future cache-bust bumps instead of a frozen literal, matching
+    # test_frontend.py's _links_style_css(...) (?v=\d+) pattern.
+    assert re.search(r"/static/style\.css\?v=\d+", html), html[:300]
 
 
 # ===========================================================================
