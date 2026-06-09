@@ -639,7 +639,37 @@ async def _download_one(
                 f"{DRIVE_API_BASE}/files/{file_id}", params=params, timeout=_TIMEOUT
             )
             resp.raise_for_status()
-            return resp.content
+            body = resp.content
+            ctype = resp.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            if ctype.startswith("image/") or _is_image_bytes(body):
+                return body
+            # 200 OK but NOT image bytes — Drive returns a throttle/interstitial
+            # page (e.g. the rate-limit "Sorry" HTML, or a virus-scan confirm)
+            # with a 200 status. Treat it as a retryable throttle signal: we must
+            # NEVER write a non-image file, because StaticFiles serves it as
+            # image/* by extension and the browser then shows a broken image
+            # (the exact failure observed locally). Hardening for R-Bake1.
+            if attempt < DOWNLOAD_MAX_RETRIES:
+                delay = min(DOWNLOAD_BACKOFF_BASE * (2 ** attempt), DOWNLOAD_BACKOFF_CAP)
+                delay *= 1.0 + random.uniform(
+                    -DOWNLOAD_DELAY_JITTER, DOWNLOAD_DELAY_JITTER
+                )
+                logger.warning(
+                    "Download returned non-image content (%s); backing off %.1fs "
+                    "(retry %d/%d).",
+                    ctype or "unknown",
+                    delay,
+                    attempt + 1,
+                    DOWNLOAD_MAX_RETRIES,
+                )
+                await asyncio.sleep(delay)
+                attempt += 1
+                continue
+            logger.warning(
+                "Download returned non-image content after retries (%s); not writing.",
+                ctype or "unknown",
+            )
+            raise DriveError("Upstream Drive returned non-image content.") from None
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             if status in _RETRYABLE_STATUSES and attempt < DOWNLOAD_MAX_RETRIES:
@@ -676,6 +706,24 @@ async def _download_one(
                 continue
             logger.warning("Download error: %s.", type(exc).__name__)
             raise DriveError("Upstream Drive download failed.") from None
+
+
+def _is_image_bytes(body: bytes) -> bool:
+    """Magic-byte sniff: True iff ``body`` begins with a known image signature.
+
+    A backstop to the Content-Type check in :func:`_download_one` so a throttle/
+    interstitial HTML/JSON body (200 OK, wrong content) is never mistaken for an
+    image and written to the bake.
+    """
+    if len(body) < 12:
+        return False
+    return (
+        body[:3] == b"\xff\xd8\xff"               # JPEG
+        or body[:8] == b"\x89PNG\r\n\x1a\n"       # PNG
+        or body[:6] in (b"GIF87a", b"GIF89a")     # GIF
+        or (body[:4] == b"RIFF" and body[8:12] == b"WEBP")  # WEBP
+        or body[:2] == b"BM"                       # BMP
+    )
 
 
 def _atomic_write(dest: Path, body: bytes) -> None:

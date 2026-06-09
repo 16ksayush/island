@@ -427,6 +427,53 @@ def test_download_images_paced_retries_then_writes(monkeypatch, tmp_path):
     assert state["hits"] == 2  # one 403 retry + one 200
 
 
+def test_is_image_bytes_sniff():
+    """Magic-byte sniff accepts real image headers, rejects HTML/JSON/short."""
+    assert drive_service._is_image_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 12)  # JPEG
+    assert drive_service._is_image_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 12)  # PNG
+    assert drive_service._is_image_bytes(b"RIFF\x00\x00\x00\x00WEBP" + b"\x00")  # WEBP
+    assert not drive_service._is_image_bytes(b"<!DOCTYPE html><html>Sorry...</html>")
+    assert not drive_service._is_image_bytes(b'{"detail":"x"}')
+    assert not drive_service._is_image_bytes(b"short")
+
+
+def test_download_skips_non_image_200_never_writes(monkeypatch, tmp_path):
+    """A 200 with an HTML throttle/interstitial body (NOT image bytes) must be
+    treated as a retryable throttle and NEVER written — guards against a bake
+    persisting a "Sorry" page as a .jpeg (broken image in the browser)."""
+    monkeypatch.setenv("GD_API_KEY", "TEST-DUMMY-KEY")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # Always a 200 HTML "Sorry" rate-limit page — never real image bytes.
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html; charset=utf-8"},
+            content=b"<html><head><title>Sorry...</title></head><body>error</body></html>",
+        )
+
+    transport = httpx.MockTransport(handler)
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        drive_service.httpx,
+        "AsyncClient",
+        lambda *a, **k: (k.pop("transport", None), real_async_client(transport=transport, **k))[1],
+    )
+
+    async def fast_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(drive_service.asyncio, "sleep", fast_sleep)
+
+    dest = tmp_path / "1" / "1.1.jpeg"
+    downloaded, skipped, failures = asyncio.run(
+        drive_service.download_images_paced([(dest, "fid_x")])
+    )
+    # Recorded as a failure, and crucially NOTHING is written to disk.
+    assert downloaded == 0
+    assert (dest, "fid_x") in failures
+    assert not dest.exists()
+
+
 def test_download_images_paced_skips_existing(monkeypatch, tmp_path):
     """An already-present non-empty dest is skipped (idempotent/resumable)."""
     monkeypatch.setenv("GD_API_KEY", "TEST-DUMMY-KEY")
