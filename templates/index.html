@@ -7,72 +7,19 @@
 
     <!-- Tailwind via CDN (layout); style.css holds theme tokens + atmosphere. -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/style.css?v=8" />
-
-    <!-- M15 N7 HYBRID: active-theme painted backdrop preload (NF-M15-6). First
-         paint pays for ONE backdrop, keyed off the SSR theme cookie; the inactive
-         theme's map loads lazily on toggle via CSS. -->
-    {% if theme == 'sea' %}
-    <link rel="preload" as="image" fetchpriority="high" href="/static/img/light/landing-map.v2.webp" />
-    {% else %}
-    <link rel="preload" as="image" fetchpriority="high" href="/static/img/horror/landing-map.v2.jpg" />
-    {% endif %}
+    <link rel="stylesheet" href="/static/style.css?v=7" />
   </head>
 
   <body class="theme-{{ theme }} min-h-screen">
-    {#- ===== Shared SSR data driving BOTH representations (R-M15-10) ===== -#}
-    {% set available_ids = levels | selectattr('available') | map(attribute='id') | list %}
-    {#- Sea world island names (SQ6 sign-off) — the aria-label / list-name source. -#}
-    {% set sea_names = {
-      0:'Ruin', 1:'Crypt', 2:"Witch's Hut", 3:'Mausoleum', 4:'Ruined Abbey',
-      5:'Prison', 6:'Graveyard', 7:'Sealed', 8:'Sunken Temple', 9:'Forbidden',
-      10:'Cavern', 11:'Sepulcher', 12:'Watch Tower', 13:'Pit', 14:'Final Keep',
-      15:'Haunted Tower', 16:'Cursed Orchard', 17:"Dragon's Den", 18:'Forgotten Armory'
-    } %}
-    {#- 19 node positions in the SVG viewBox (0..1600 x 0..900). Pure template
-        layout data (NOT backend) — it replaces the old %-pinned coords dict but
-        in drift-free viewBox space. Two side-by-side schemes (doors vs isles)
-        keyed by theme; both are 19 (x,y) centers, ≥110 units apart, never
-        overlapping. The glyph is instanced 19× via the Jinja loop below. -#}
-    {% if theme == 'sea' %}
-    {% set node_xy = {
-      0:[210,356], 1:[434,356], 2:[654,358], 3:[880,356], 4:[1110,356],
-      5:[204,524], 6:[434,524], 7:[664,524], 8:[894,528], 9:[1122,526],
-      10:[1342,526], 11:[212,726], 12:[446,726], 13:[678,726], 14:[912,726],
-      15:[1148,726], 16:[1382,726], 17:[610,206], 18:[990,206]
-    } %}
-    {#- per-node island sub-variant (palm / hut / tower) for visual variety -#}
-    {% set isle_kind = {
-      0:'plain', 1:'palm', 2:'hut', 3:'plain', 4:'plain', 5:'plain', 6:'plain',
-      7:'plain', 8:'hut', 9:'palm', 10:'palm', 11:'hut', 12:'tower', 13:'palm',
-      14:'keep', 15:'tower', 16:'palm', 17:'hut', 18:'palm'
-    } %}
-    {% else %}
-    {% set node_xy = {
-      0:[434,375], 1:[586,375], 2:[738,377], 3:[882,377], 4:[1024,375],
-      5:[210,567], 6:[428,567], 7:[1174,567], 8:[1392,567], 9:[738,575],
-      10:[868,575], 11:[190,791], 12:[388,787], 13:[585,795], 14:[1015,795],
-      15:[1218,787], 16:[1420,791], 17:[686,180], 18:[914,180]
-    } %}
-    {#- per-node door height scale (viewBox units) — receding-rank perspective -#}
-    {% set door_h = {
-      0:138, 1:130, 2:122, 3:122, 4:130, 5:168, 6:160, 7:160, 8:168, 9:138,
-      10:138, 11:190, 12:184, 13:178, 14:178, 15:184, 16:190, 17:108, 18:108
-    } %}
-    {% endif %}
-
-    <!-- z-0 painted backdrop (N7 HYBRID): the EXISTING detailed map, REUSED as
-         ambient painterly depth behind the rich SVG. background-image:cover,
-         theme-conditional in style.css; decorative + inert. -->
-    <div class="nav-backdrop" aria-hidden="true"></div>
-
-    <!-- z-1 atmosphere = themed SCRIM + vignette + fog (legibility over the
-         painting). pointer-events:none + aria-hidden. -->
+    <!-- pointer-transparent vignette / sky overlay -->
     <div class="atmosphere" aria-hidden="true">
       {% if theme != 'sea' %}
-      <!-- M9 horror-only decorative scene (re-homed unchanged), behind the nav. -->
+      <!-- M9 horror-only decorative scene: pure inline SVG silhouettes, behind
+           the door grid (.layer, z-1). All aria-hidden + pointer-events:none.
+           Never rendered for the Sea theme. Does not touch the grid markup. -->
       <div class="horror-scene" aria-hidden="true">
-        <svg class="horror-silhouette horror-silhouette--doorway" viewBox="0 0 100 160" preserveAspectRatio="xMidYMin meet" focusable="false" aria-hidden="true">
+        <!-- Moonlit doorway focal glow at the far center (vanishing point). -->
+        <svg class="horror-silhouette horror-silhouette--doorway" viewBox="0 0 100 160" preserveAspectRatio="xMidYMin meet" focusable="false">
           <defs>
             <radialGradient id="hr-moon" cx="50%" cy="42%" r="60%">
               <stop offset="0%" stop-color="#cfe0ff" stop-opacity="0.9" />
@@ -82,18 +29,50 @@
           </defs>
           <rect x="30" y="6" width="40" height="148" rx="20" fill="url(#hr-moon)" />
         </svg>
-        <svg class="horror-silhouette horror-silhouette--figure" viewBox="0 0 120 180" preserveAspectRatio="xMidYMax meet" focusable="false" aria-hidden="true">
+
+        <!-- Cloaked hooded figure: faint, low-center, anchored to the bottom
+             gutter BELOW the grid so it never sits under a clickable door. -->
+        <svg class="horror-silhouette horror-silhouette--figure" viewBox="0 0 120 180" preserveAspectRatio="xMidYMax meet" focusable="false">
           <path fill="#02040a" d="M60 8c-16 0-27 12-27 30 0 9 3 16 8 21-8 6-14 17-17 33-4 22-6 41-6 58h84c0-17-2-36-6-58-3-16-9-27-17-33 5-5 8-12 8-21 0-18-11-30-27-30z" />
         </svg>
-        <svg class="horror-silhouette horror-silhouette--claw-left" viewBox="0 0 80 120" preserveAspectRatio="xMinYMax meet" focusable="false" aria-hidden="true">
+
+        <!-- Clawed hands reaching from the left/right viewport edges only. -->
+        <svg class="horror-silhouette horror-silhouette--claw-left" viewBox="0 0 80 120" preserveAspectRatio="xMinYMax meet" focusable="false">
           <path fill="#02040a" d="M0 60c10-2 18-6 26-12 3 14 4 27 3 40-1-9-3-17-7-24 6 10 9 21 9 33-3-10-7-19-13-26 4 11 6 22 5 33-4-12-9-22-16-31 1 12 1 23-1 34C-2 110-2 84 0 60z" />
         </svg>
-        <svg class="horror-silhouette horror-silhouette--claw-right" viewBox="0 0 80 120" preserveAspectRatio="xMinYMax meet" focusable="false" aria-hidden="true">
+        <svg class="horror-silhouette horror-silhouette--claw-right" viewBox="0 0 80 120" preserveAspectRatio="xMinYMax meet" focusable="false">
           <path fill="#02040a" d="M0 60c10-2 18-6 26-12 3 14 4 27 3 40-1-9-3-17-7-24 6 10 9 21 9 33-3-10-7-19-13-26 4 11 6 22 5 33-4-12-9-22-16-31 1 12 1 23-1 34C-2 110-2 84 0 60z" />
         </svg>
       </div>
+      {% endif %}
+    </div>
 
-      <!-- Reused ambient drifting ghosts / twinkles / shooting stars (decorative). -->
+    {% if theme != 'sea' %}
+    <!-- ============ HORROR LANDING: full-bleed illustrated map ============
+         The map art (static/img/horror/landing-map.v2.jpg) fills the viewport and
+         replaces the door grid. Each painted location is a %-positioned
+         clickable hotspot -> /level/{id}; availability/sealed styling comes from
+         the backend-discovered `levels`. All 19 locations 0-18 are on the art.
+         Append `?calibrate` to the URL to outline + number the hotspots for
+         fine-tuning. -->
+    {% set available_ids = levels | selectattr('available') | map(attribute='id') | list %}
+    {#- (x%, y%) = center of each painted location number, measured from the art -#}
+    {% set coords = {
+      0:[8.0,8.5], 1:[28.5,11.0], 2:[47.5,10.5], 3:[66.5,14.0], 4:[83.0,25.0],
+      5:[16.0,33.0], 6:[33.0,31.0], 7:[51.0,32.0], 8:[71.5,37.0], 9:[90.5,45.0],
+      10:[10.5,52.0], 11:[31.0,58.0], 12:[51.0,57.0], 13:[70.0,59.0], 14:[89.0,65.0],
+      15:[16.0,81.0], 16:[39.0,82.0], 17:[58.0,83.0], 18:[78.0,85.0]
+    } %}
+    <div class="layer horror-landing">
+      <h1 class="sr-only">Tour-de-Anshika — choose a destination</h1>
+
+      <!-- App brand mark, overlaid top-left (present on every page). -->
+      <a href="/" class="brand-logo" aria-label="tOUR-de-Anshika — home">
+        <img class="app-logo" src="/static/img/logo/create_thumb.png" alt="tOUR-de-Anshika" decoding="async" />
+      </a>
+
+      <!-- Ambient drifting ghosts in the side margins (decorative, inert).
+           Animated drift/fade; frozen under prefers-reduced-motion. -->
       <div class="horror-ambient" aria-hidden="true">
         {% for g in range(9) %}
         <svg class="horror-ghost horror-ghost--{{ g }}" viewBox="0 0 50 64" focusable="false" aria-hidden="true">
@@ -102,16 +81,90 @@
           <circle cx="31" cy="25" r="2.6" fill="#0a0e1a" />
         </svg>
         {% endfor %}
+
+        <!-- Faint static twinkle stars across the upper sky band. -->
         {% for t in range(8) %}
         <span class="horror-twinkle horror-twinkle--{{ t }}" aria-hidden="true"></span>
         {% endfor %}
+
+        <!-- Shooting stars: a moving dot + thin tapering tail streaking
+             diagonally across the upper sky on long staggered loops. -->
         {% for s in range(4) %}
         <span class="horror-star horror-star--{{ s }}" aria-hidden="true"></span>
         {% endfor %}
       </div>
-      {% else %}
-      <!-- Reused ambient sky decoration (balloons / gulls / clouds, decorative). -->
+
+      <!-- Global theme toggle, overlaid on the map (present on EVERY page). -->
+      <button
+        id="theme-toggle"
+        type="button"
+        class="theme-toggle horror-map-toggle"
+        aria-label="Toggle between Horror and Sea themes"
+      >
+        <span class="toggle-icon" aria-hidden="true">🌊</span>
+        <span>Sail to the Sea</span>
+      </button>
+
+      <div class="horror-map" aria-label="Map of Tour-de-Anshika — choose a destination">
+        <img
+          class="horror-map-img"
+          src="/static/img/horror/landing-map.v2.jpg"
+          alt="A haunted map of Tour-de-Anshika with numbered destinations"
+          fetchpriority="high"
+          decoding="async"
+        />
+        <div class="horror-map-hotspots">
+          {% for id, xy in coords.items() %}
+          <a
+            class="map-hotspot{% if id not in available_ids %} is-sealed{% endif %}"
+            href="/level/{{ id }}"
+            style="left: {{ xy[0] }}%; top: {{ xy[1] }}%;"
+            aria-label="Level {{ id }}{% if id not in available_ids %} (sealed — fallback content){% endif %}"
+          >
+            <span class="map-hotspot-ring" aria-hidden="true"></span>
+            <span class="map-hotspot-id" aria-hidden="true">{{ id }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <!-- ============ SEA LANDING: full-bleed illustrated archipelago map ======
+         The map art (static/img/light/landing-map.v2.webp) fills the viewport and
+         replaces the island grid. Each painted island is a %-positioned clickable
+         hotspot -> /level/{id}; availability/sunken styling comes from the
+         backend-discovered `levels`. All 19 islands 0-18 are on the art.
+         Append `?calibrate` to the URL to outline + number the hotspots for
+         fine-tuning. Mirrors the M9 Horror map machinery; every CSS rule is
+         .theme-sea-scoped so Horror is untouched (NF-SR4). -->
+    {% set available_ids = levels | selectattr('available') | map(attribute='id') | list %}
+    {#- (x%, y%) = center of each painted island number, measured from THIS art -#}
+    {% set sea_coords = {
+      0:[23.5,18.7], 1:[34.9,18.4], 2:[45.8,19.9], 3:[57.3,18.6], 4:[70.0,19.9],
+      5:[24.3,47.2], 6:[35.3,46.4], 7:[45.7,47.2], 8:[38.5,60.1], 9:[68.2,47.2],
+      10:[23.9,71.7], 11:[35.3,71.7], 12:[72.5,91.5], 13:[57.3,71.4], 14:[68.2,71.6],
+      15:[46.1,88.2], 16:[46.1,71.2], 17:[57.5,89.4], 18:[85.9,71.2]
+    } %}
+    {% set sea_names = {
+      0:'Ruin', 1:'Crypt', 2:"Witch's Hut", 3:'Mausoleum', 4:'Ruined Abbey',
+      5:'Prison', 6:'Graveyard', 7:'Sealed', 8:'Sunken Temple', 9:'Forbidden',
+      10:'Cavern', 11:'Sepulcher', 12:'Watch Tower', 13:'Pit', 14:'Final Keep',
+      15:'Haunted Tower', 16:'Cursed Orchard', 17:"Dragon's Den", 18:'Forgotten Armory'
+    } %}
+    <div class="layer sea-landing">
+      <h1 class="sr-only">Tour-de-Anshika — choose an island</h1>
+
+      <!-- App brand mark, overlaid top-left (present on every page). -->
+      <a href="/" class="brand-logo" aria-label="tOUR-de-Anshika — home">
+        <img class="app-logo" src="/static/img/logo/create_thumb.png" alt="tOUR-de-Anshika" decoding="async" />
+      </a>
+
+      <!-- Ambient sky decoration in the margins/sky band (decorative, inert):
+           drifting hot-air balloons, gliding gulls, and soft clouds. Pure
+           inline SVG, aria-hidden + pointer-events:none, behind .sea-map (z-1).
+           All animations frozen under prefers-reduced-motion. -->
       <div class="sea-ambient" aria-hidden="true">
+        <!-- Hot-air balloons: cheerful azure-palette canopy + basket. -->
         {% for b in range(3) %}
         <svg class="sea-balloon sea-balloon--{{ b }}" viewBox="0 0 60 90" focusable="false" aria-hidden="true">
           <path d="M30 2C16 2 6 13 6 28c0 12 8 21 16 27h16c8-6 16-15 16-27C54 13 44 2 30 2z" fill="var(--bln-a)" />
@@ -122,408 +175,56 @@
           <path d="M25 56l3-6M35 56l-3-6" stroke="#5c3a16" stroke-width="0.8" fill="none" />
         </svg>
         {% endfor %}
+
+        <!-- Gull silhouettes: simple gliding "m"/V wing shape. -->
         {% for g in range(5) %}
         <svg class="sea-bird sea-bird--{{ g }}" viewBox="0 0 40 16" focusable="false" aria-hidden="true">
           <path d="M2 12C8 4 14 4 20 9c6-5 12-5 18 3-6-3-11-2-18 3-7-5-12-6-18-3z" fill="#3a5a72" />
         </svg>
         {% endfor %}
+
+        <!-- Soft drifting cloud puffs. -->
         {% for c in range(2) %}
         <svg class="sea-cloud sea-cloud--{{ c }}" viewBox="0 0 100 44" focusable="false" aria-hidden="true">
           <path d="M20 38c-9 0-16-6-16-14 0-7 6-13 14-13 2-7 9-11 16-11 9 0 16 6 18 14 7 0 13 5 13 12 0 7-6 12-14 12z" fill="#ffffff" />
         </svg>
         {% endfor %}
       </div>
-      {% endif %}
-    </div>
 
-    {% if theme != 'sea' %}
-    <!-- ============ HORROR LANDING (N7 HYBRID) ============================
-         z-2 interactive layer over the painted backdrop (z-0) + scrim (z-1).
-         Desktop/tablet: ONE inline <svg viewBox="0 0 1600 900"> holding the
-         decorative ornate "corridor of mystical portals" scene + the 19 nav
-         nodes in the SAME coordinate system (no drift). Phone (≤767px): the
-         same 19 targets reflow to a stacked .nav-list. -->
-    <div class="layer horror-landing">
-      <h1 class="sr-only">Tour-de-Anshika — choose a destination</h1>
-
-      <a href="/" class="brand-logo" aria-label="tOUR-de-Anshika — home">
-        <img class="app-logo" src="/static/img/logo/create_thumb.png" alt="tOUR-de-Anshika" decoding="async" />
-      </a>
-
+      <!-- Global theme toggle, overlaid on the painted pill (present on EVERY
+           page). Reuses id="theme-toggle" so theme.js wires it unchanged. -->
       <button
         id="theme-toggle"
         type="button"
-        class="theme-toggle nav-toggle"
-        aria-label="Toggle between Horror and Sea themes"
-      >
-        <span class="toggle-icon" aria-hidden="true">🌊</span>
-        <span>Sail to the Sea</span>
-      </button>
-
-      <!-- ===== DESKTOP/TABLET: .nav-map (one viewBox) ===== -->
-      <svg class="nav-map" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet"
-           role="navigation" aria-label="Choose a door — a corridor of nineteen doors">
-        <defs>
-          <!-- Reusable ORNATE gothic PORTAL glyph, instanced 19× via <use>.
-               A pointed/gothic-arched carved frame, recessed double-leaf doors,
-               wrought-iron hinges + stud band, a glowing amber keyhole/seam, an
-               inner amber under-glow + an arch keystone rune. The available vs
-               sealed skin is driven by CSS on .nav-node[--sealed]. Drawn around
-               a 0,0 origin so each instance positions by transform. -->
-          <linearGradient id="h-door-leaf" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stop-color="#2c2117" />
-            <stop offset="0.5" stop-color="#39291a" />
-            <stop offset="1" stop-color="#241a11" />
-          </linearGradient>
-          <radialGradient id="h-rune" cx="50%" cy="50%" r="50%">
-            <stop offset="0" stop-color="#ffe6ad" stop-opacity="0.95" />
-            <stop offset="100%" stop-color="#ffb000" stop-opacity="0" />
-          </radialGradient>
-          <filter id="h-glyph-glow" x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="3" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-          <filter id="h-weather" x="-10%" y="-10%" width="120%" height="120%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="2" stitchTiles="stitch" result="n" />
-            <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.45 0" />
-          </filter>
-
-          <!-- The ornate portal: a 80-wide x 150-tall mystical doorway -->
-          <g id="h-portal-glyph">
-            <!-- arch under-glow halo (amber light spilling from the seam) -->
-            <path class="portal-aura" d="M40 4 C12 4 4 26 4 54 V150 H76 V54 C76 26 68 4 40 4 Z" />
-            <!-- carved gothic-arched outer frame (pointed arch) -->
-            <path class="portal-frame" d="M40 2 C9 2 1 26 1 56 V150 H79 V56 C79 26 71 2 40 2 Z" />
-            <!-- inner reveal -->
-            <path class="portal-reveal" d="M40 12 C16 12 9 32 9 58 V144 H71 V58 C71 32 64 12 40 12 Z" />
-            <!-- two recessed door leaves meeting at a glowing seam -->
-            <path class="portal-leaf" d="M38 18 C20 18 14 36 14 60 V140 H38 Z" />
-            <path class="portal-leaf" d="M42 18 C60 18 66 36 66 60 V140 H42 Z" />
-            <!-- glowing amber seam of light down the centre -->
-            <line class="portal-seam" x1="40" y1="20" x2="40" y2="138" />
-            <!-- keystone rune at the arch apex -->
-            <circle class="portal-keystone-glow" cx="40" cy="34" r="13" />
-            <path class="portal-rune" d="M40 27 L40 41 M34 31 L46 37 M46 31 L34 37" />
-            <!-- wrought-iron hinge studs along both leaves -->
-            <g class="portal-studs">
-              <circle cx="20" cy="40" r="2.4" /><circle cx="20" cy="78" r="2.4" /><circle cx="20" cy="116" r="2.4" />
-              <circle cx="60" cy="40" r="2.4" /><circle cx="60" cy="78" r="2.4" /><circle cx="60" cy="116" r="2.4" />
-            </g>
-            <!-- iron hinge straps -->
-            <g class="portal-hinges">
-              <path d="M14 54 H30 M14 102 H30" />
-              <path d="M50 54 H66 M50 102 H66" />
-            </g>
-            <!-- glowing keyhole / handle -->
-            <circle class="portal-keyhole" cx="40" cy="96" r="4.5" />
-            <path class="portal-keyhole-stem" d="M40 99 L40 108" />
-            <!-- amber threshold under-glow strip at the foot -->
-            <rect class="portal-threshold" x="14" y="142" width="52" height="5" rx="2" />
-            <!-- boards (sealed only; CSS reveals) -->
-            <g class="portal-boards">
-              <line x1="6" y1="64" x2="74" y2="54" />
-              <line x1="6" y1="104" x2="74" y2="114" />
-            </g>
-          </g>
-        </defs>
-
-        <!-- ===== Horror scene (decorative, ELEVATED, OVER the painting) ===== -->
-        <g class="nav-scene" aria-hidden="true" focusable="false">
-          <defs>
-            <linearGradient id="h-wall" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#121a2e" /><stop offset="1" stop-color="#0a0e1a" />
-            </linearGradient>
-            <linearGradient id="h-floor" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#0d1322" /><stop offset="1" stop-color="#05070d" />
-            </linearGradient>
-            <radialGradient id="h-moon-scene" cx="50%" cy="38%" r="60%">
-              <stop offset="0" stop-color="#cfe0ff" stop-opacity="0.95" />
-              <stop offset="55%" stop-color="#9fb6e0" stop-opacity="0.30" />
-              <stop offset="100%" stop-color="#9fb6e0" stop-opacity="0" />
-            </radialGradient>
-            <radialGradient id="h-sconce" cx="50%" cy="50%" r="50%">
-              <stop offset="0" stop-color="#ffd27a" stop-opacity="0.95" />
-              <stop offset="100%" stop-color="#ffb000" stop-opacity="0" />
-            </radialGradient>
-            <filter id="h-fog" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="16" />
-            </filter>
-            <filter id="h-grain" x="0" y="0" width="100%" height="100%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" result="n" />
-              <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0" />
-            </filter>
-            <filter id="h-sheen" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
-              <feSpecularLighting in="blur" surfaceScale="3" specularConstant="0.9" specularExponent="18" lighting-color="#ffe6ad" result="spec">
-                <fePointLight x="250" y="240" z="120" />
-              </feSpecularLighting>
-              <feComposite in="spec" in2="SourceAlpha" operator="in" result="specClip" />
-              <feMerge><feMergeNode in="SourceGraphic" /><feMergeNode in="specClip" /></feMerge>
-            </filter>
-          </defs>
-
-          <rect x="0" y="0" width="1600" height="640" fill="url(#h-wall)" opacity="0.62" style="mix-blend-mode:multiply" />
-          <polygon points="0,640 1600,640 1600,900 0,900" fill="url(#h-floor)" opacity="0.66" style="mix-blend-mode:multiply" />
-          <g stroke="#1a2233" stroke-width="2" opacity="0.5">
-            <line x1="800" y1="470" x2="-200" y2="900" /><line x1="800" y1="470" x2="250" y2="900" />
-            <line x1="800" y1="470" x2="560" y2="900" /><line x1="800" y1="470" x2="1040" y2="900" />
-            <line x1="800" y1="470" x2="1350" y2="900" /><line x1="800" y1="470" x2="1800" y2="900" />
-          </g>
-          <g stroke="#0e1626" stroke-width="2" opacity="0.4">
-            <line x1="800" y1="470" x2="-200" y2="0" /><line x1="800" y1="470" x2="1800" y2="0" />
-          </g>
-          <polygon points="640,0 760,0 880,640 540,640" fill="#cfe0ff" opacity="0.10" filter="url(#h-fog)" />
-          <rect x="735" y="360" width="130" height="220" rx="6" fill="#070b15" />
-          <rect x="700" y="300" width="200" height="320" rx="8" fill="url(#h-moon-scene)" />
-          <ellipse cx="500" cy="720" rx="520" ry="70" fill="#9fb6e0" opacity="0.12" filter="url(#h-fog)" />
-          <ellipse cx="1150" cy="780" rx="560" ry="80" fill="#9fb6e0" opacity="0.10" filter="url(#h-fog)" />
-          <g stroke="#cfd8ea" stroke-width="1" fill="none" opacity="0.16">
-            <path d="M0 0 L120 120 M0 0 L150 70 M0 0 L70 150" />
-            <path d="M40 0 Q90 60 0 90 M90 0 Q150 80 30 140" />
-            <g transform="translate(1600,0) scale(-1,1)">
-              <path d="M0 0 L120 120 M0 0 L150 70 M0 0 L70 150" />
-              <path d="M40 0 Q90 60 0 90 M90 0 Q150 80 30 140" />
-            </g>
-          </g>
-          <g class="scene-flicker">
-            <circle cx="250" cy="300" r="64" fill="url(#h-sconce)" />
-            <circle cx="1350" cy="300" r="64" fill="url(#h-sconce)" />
-          </g>
-          <g filter="url(#h-sheen)">
-            <rect x="244" y="296" width="12" height="40" rx="3" fill="#4a3a22" />
-            <rect x="1344" y="296" width="12" height="40" rx="3" fill="#4a3a22" />
-          </g>
-          <rect x="0" y="0" width="1600" height="900" filter="url(#h-grain)" opacity="0.45" style="mix-blend-mode:overlay" />
-        </g>
-
-        <!-- ===== 19 interactive nav-nodes (mystical portals), id 0..18 ===== -->
-        <g class="nav-nodes">
-          {% for id in range(19) %}
-          {% set x = node_xy[id][0] %}
-          {% set y = node_xy[id][1] %}
-          {% set dh = door_h[id] %}
-          {% set scale = dh / 150.0 %}
-          {% set gw = 80 * scale %}
-          {#- hit rect floored at 100 viewBox units so even the far doors clear
-              ~44 CSS px at the ~768px tablet floor (100 * 737/1600 ≈ 46px). -#}
-          {% set hitw = [gw * 1.18, 100] | max %}
-          {% set hith = [dh + 12, 100] | max %}
-          <a class="nav-node{% if id not in available_ids %} nav-node--sealed{% endif %}"
-             href="/level/{{ id }}"
-             aria-label="Level {{ id }}{% if id not in available_ids %} (sealed — fallback content){% endif %}">
-            <rect class="nav-node-hit" x="{{ (x - hitw / 2) | round(1) }}" y="{{ (y - hith / 2) | round(1) }}" width="{{ hitw | round(1) }}" height="{{ hith | round(1) }}" />
-            <g class="nav-node-glyph nav-node-glyph--portal" transform="translate({{ (x - gw / 2) | round(1) }} {{ (y - dh / 2) | round(1) }}) scale({{ scale | round(4) }})">
-              <use href="#h-portal-glyph" />
-            </g>
-            <rect class="nav-node-plate" x="{{ (x - 17) | round(1) }}" y="{{ (y - 16) | round(1) }}" width="34" height="32" rx="7" />
-            <text class="nav-node-label" x="{{ x }}" y="{{ (y + 9) | round(1) }}">{{ id }}</text>
-          </a>
-          {% endfor %}
-        </g>
-      </svg>
-
-      <!-- ===== PHONE: .nav-list (stacked, ≥44px rows) ===== -->
-      <div class="nav-list-banner" aria-hidden="true">
-        <span class="banner-glow"></span>
-        <span class="banner-title">The Corridor</span>
-        <span class="banner-sub">Nineteen doors await</span>
-      </div>
-      <nav class="nav-list" aria-label="Choose a door — a corridor of nineteen doors">
-        <ul>
-          {% for id in range(19) %}
-          <li class="nav-list-item{% if id not in available_ids %} nav-list-item--sealed{% endif %}">
-            <a href="/level/{{ id }}" aria-label="Level {{ id }}{% if id not in available_ids %} (sealed — fallback content){% endif %}">
-              <span class="nav-list-id">{{ id }}</span>
-              <span class="nav-list-name">{% if id not in available_ids %}Sealed{% else %}Door {{ id }}{% endif %}</span>
-              <span class="nav-list-chev" aria-hidden="true">›</span>
-            </a>
-          </li>
-          {% endfor %}
-        </ul>
-      </nav>
-    </div>
-    {% else %}
-    <!-- ============ SEA LANDING (N7 HYBRID) ==============================
-         z-2 interactive layer over the painted archipelago backdrop (z-0) +
-         scrim (z-1). Desktop/tablet: ONE inline <svg viewBox="0 0 1600 900">
-         holding the ornate "enchanted isles" treasure-map scene + the 19 nav
-         nodes in the SAME coordinate system. Phone: reflow to .nav-list.
-         Every CSS rule is .theme-sea-scoped so Horror is untouched. -->
-    <div class="layer sea-landing">
-      <h1 class="sr-only">Tour-de-Anshika — choose an island</h1>
-
-      <a href="/" class="brand-logo" aria-label="tOUR-de-Anshika — home">
-        <img class="app-logo" src="/static/img/logo/create_thumb.png" alt="tOUR-de-Anshika" decoding="async" />
-      </a>
-
-      <button
-        id="theme-toggle"
-        type="button"
-        class="theme-toggle nav-toggle"
+        class="theme-toggle sea-map-toggle"
         aria-label="Toggle between Horror and Sea themes"
       >
         <span class="toggle-icon" aria-hidden="true">🌙</span>
         <span>Enter the Corridor</span>
       </button>
 
-      <!-- ===== DESKTOP/TABLET: .nav-map (one viewBox) ===== -->
-      <svg class="nav-map" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet"
-           role="navigation" aria-label="Choose an island — an archipelago of nineteen islands">
-        <defs>
-          <!-- Reusable ORNATE enchanted-ISLE glyph, instanced 19× via <use>.
-               A layered sand mound with a surf ring, palm fronds, a tiny beacon
-               lantern with a glow, and a fantasy flourish. Drawn around 0,0
-               (centred horizontally, base near y=0). The available vs sealed
-               skin is CSS-driven on .nav-node[--sealed]. Per-node landmark
-               variety (palm/hut/tower/keep/plain) is added inline per instance. -->
-          <radialGradient id="s-isle-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0" stop-color="#fff6d6" stop-opacity="0.9" />
-            <stop offset="100%" stop-color="#ffe39a" stop-opacity="0" />
-          </radialGradient>
-          <linearGradient id="s-sand" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#fbeec6" />
-            <stop offset="1" stop-color="#e8c98a" />
-          </linearGradient>
-          <filter id="s-isle-soft" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="2" />
-          </filter>
-
-          <!-- The ornate isle base (surf rings + layered sand + beacon glow) -->
-          <g id="s-isle-base">
-            <ellipse class="isle-surf isle-surf--outer" cx="0" cy="0" rx="56" ry="30" />
-            <ellipse class="isle-surf isle-surf--inner" cx="0" cy="2" rx="46" ry="24" />
-            <path class="isle-sand isle-sand--lower" d="M-52 2 q52 -24 104 0 q-52 22 -104 0z" />
-            <path class="isle-sand isle-sand--upper" d="M-44 -4 q44 -30 88 0 q-44 16 -88 0z" />
-            <ellipse class="isle-beacon-glow" cx="0" cy="-6" rx="30" ry="16" />
-          </g>
-        </defs>
-
-        <!-- ===== Sea scene (decorative, ELEVATED, OVER the painting) ===== -->
-        <g class="nav-scene" aria-hidden="true" focusable="false">
-          <defs>
-            <linearGradient id="s-sky" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#e0f2fe" /><stop offset="1" stop-color="#bae6fd" />
-            </linearGradient>
-            <linearGradient id="s-sea" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#7dd3fc" /><stop offset="1" stop-color="#38bdf8" />
-            </linearGradient>
-            <radialGradient id="s-sun" cx="50%" cy="50%" r="50%">
-              <stop offset="0" stop-color="#fff6d6" stop-opacity="0.98" />
-              <stop offset="60%" stop-color="#ffe39a" stop-opacity="0.5" />
-              <stop offset="100%" stop-color="#ffe39a" stop-opacity="0" />
-            </radialGradient>
-            <filter id="s-haze" x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur stdDeviation="10" />
-            </filter>
-            <filter id="s-grain" x="0" y="0" width="100%" height="100%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" result="n" />
-              <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.55  0 0 0 0 0.40  0 0 0 0 0.18  0 0 0 0.5 0" />
-            </filter>
-            <filter id="s-sheen" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur" />
-              <feSpecularLighting in="blur" surfaceScale="4" specularConstant="0.85" specularExponent="20" lighting-color="#ffffff" result="spec">
-                <fePointLight x="1320" y="80" z="200" />
-              </feSpecularLighting>
-              <feComposite in="spec" in2="SourceAlpha" operator="in" result="specClip" />
-              <feMerge><feMergeNode in="SourceGraphic" /><feMergeNode in="specClip" /></feMerge>
-            </filter>
-          </defs>
-
-          <rect x="0" y="0" width="1600" height="250" fill="url(#s-sky)" opacity="0.62" />
-          <rect x="0" y="250" width="1600" height="650" fill="url(#s-sea)" opacity="0.60" />
-          <line x1="0" y1="250" x2="1600" y2="250" stroke="#fff" stroke-width="3" opacity="0.6" />
-          <circle cx="1320" cy="150" r="250" fill="url(#s-sun)" filter="url(#s-haze)" />
-          <circle class="scene-flicker" cx="1320" cy="150" r="62" fill="#fff2c4" filter="url(#s-sheen)" />
-          <path d="M180 120c-30 0-52-18-52-42 0-21 18-38 44-38 7-22 28-34 50-34 28 0 52 19 56 44 22 0 40 15 40 36 0 22-19 36-44 36z" fill="#fff" opacity="0.85" />
-          <path d="M560 80c-22 0-38-13-38-30 0-15 13-27 31-27 5-16 20-24 36-24 20 0 37 13 40 31 16 0 28 11 28 26 0 16-13 25-31 25z" fill="#fff" opacity="0.75" />
-          <g stroke="#bff0ff" stroke-width="3" opacity="0.5" fill="none">
-            <path d="M40 380q60 -18 120 0t120 0 120 0 120 0 120 0 120 0" />
-            <path d="M40 520q60 -18 120 0t120 0 120 0 120 0 120 0 120 0 120 0 120 0" />
-            <path d="M40 680q60 -18 120 0t120 0 120 0 120 0 120 0 120 0 120 0 120 0 120 0" />
-          </g>
-          <g stroke="#ffffff" stroke-width="6" opacity="0.18" fill="none" filter="url(#s-haze)">
-            <path d="M0 600q200 -26 400 0t400 0 400 0 400 0" />
-          </g>
-          <g stroke="#0c4a6e" stroke-width="3" stroke-dasharray="3 14" fill="none" opacity="0.5" stroke-linecap="round">
-            <path d="M300 330 Q 520 250 760 360 T 1240 360" />
-            <path d="M260 560 Q 540 660 860 560 T 1340 600" />
-          </g>
-          <g transform="translate(1430,640)" opacity="0.8">
-            <circle r="66" fill="#fffaf0" opacity="0.85" />
-            <circle r="66" fill="none" stroke="#0c4a6e" stroke-width="2.5" />
-            <circle r="48" fill="none" stroke="#0c4a6e" stroke-width="1.5" />
-            <polygon points="0,-60 12,0 0,60 -12,0" fill="#fffaf0" stroke="#0c4a6e" stroke-width="2" />
-            <polygon points="-60,0 0,-12 60,0 0,12" fill="#0c4a6e" opacity="0.65" />
-            <polygon points="0,-60 8,-8 0,0 -8,-8" fill="#c0392b" />
-            <text x="0" y="-72" text-anchor="middle" font-size="20" font-weight="800" fill="#0c4a6e">N</text>
-          </g>
-          <rect x="0" y="0" width="1600" height="900" filter="url(#s-grain)" opacity="0.32" style="mix-blend-mode:multiply" />
-        </g>
-
-        <!-- ===== 19 interactive nav-nodes (enchanted isles), id 0..18 ===== -->
-        <g class="nav-nodes">
-          {% for id in range(19) %}
-          {% set x = node_xy[id][0] %}
-          {% set y = node_xy[id][1] %}
-          {% set kind = isle_kind[id] %}
-          <a class="nav-node{% if id not in available_ids %} nav-node--sealed{% endif %} nav-node--{{ kind }}"
-             href="/level/{{ id }}"
-             aria-label="Level {{ id }} — {{ sea_names[id] }}{% if id not in available_ids %} (sunken — fallback content){% endif %}">
-            <rect class="nav-node-hit" x="{{ x - 58 }}" y="{{ y - 78 }}" width="116" height="120" />
-            <g class="nav-node-glyph nav-node-glyph--isle" transform="translate({{ x }} {{ y }})">
-              <use href="#s-isle-base" />
-              {% if kind == 'palm' %}
-              <path class="isle-trunk" d="M-2 -8 q-6 -30 -22 -40" />
-              <path class="isle-palm" d="M-24 -48q-26 -8 -38 6q28 -2 38 2zM-24 -48q24 -14 40 -6q-26 4 -40 4zM-24 -48q-4 -28 -18 -38q14 14 18 38z" />
-              <circle class="isle-coconut" cx="-24" cy="-46" r="3" />
-              {% elif kind == 'hut' %}
-              <polygon class="isle-roof" points="-18,-20 0,-44 18,-20" />
-              <rect class="isle-wall" x="-13" y="-20" width="26" height="20" rx="2" />
-              <rect class="isle-door" x="-4" y="-12" width="8" height="12" rx="1" />
-              {% elif kind == 'tower' %}
-              <rect class="isle-wall" x="-9" y="-50" width="18" height="48" rx="2" />
-              <polygon class="isle-roof" points="-13,-50 0,-68 13,-50" />
-              <circle class="isle-beacon" cx="0" cy="-44" r="3.2" />
-              {% elif kind == 'keep' %}
-              <rect class="isle-wall" x="-18" y="-44" width="36" height="42" rx="2" />
-              <rect class="isle-merlon" x="-18" y="-50" width="8" height="8" />
-              <rect class="isle-merlon" x="-4" y="-50" width="8" height="8" />
-              <rect class="isle-merlon" x="10" y="-50" width="8" height="8" />
-              <rect class="isle-door" x="-6" y="-20" width="12" height="18" rx="1" />
-              {% else %}
-              <path class="isle-trunk" d="M0 -6 q-4 -22 -16 -30" />
-              <path class="isle-palm" d="M-16 -36q-20 -6 -30 4q22 -2 30 2zM-16 -36q18 -10 30 -4q-20 4 -30 4z" />
-              {% endif %}
-              <!-- tiny fantasy beacon lantern + glow flourish -->
-              <circle class="isle-lantern-glow" cx="26" cy="-30" r="9" />
-              <circle class="isle-lantern" cx="26" cy="-30" r="3" />
-            </g>
-            <rect class="nav-node-plate" x="{{ x - 18 }}" y="{{ y + 14 }}" width="36" height="26" rx="7" />
-            <text class="nav-node-label" x="{{ x }}" y="{{ y + 33 }}">{{ id }}</text>
+      <div class="sea-map" aria-label="Map of Tour-de-Anshika — choose an island">
+        <img
+          class="sea-map-img"
+          src="/static/img/light/landing-map.v2.webp"
+          alt="An illustrated archipelago map of Tour-de-Anshika with numbered islands"
+          fetchpriority="high"
+          decoding="async"
+        />
+        <div class="sea-map-hotspots">
+          {% for id, xy in sea_coords.items() %}
+          <a
+            class="map-hotspot{% if id not in available_ids %} is-sealed{% endif %}"
+            href="/level/{{ id }}"
+            style="left: {{ xy[0] }}%; top: {{ xy[1] }}%;"
+            aria-label="Level {{ id }} — {{ sea_names[id] }}{% if id not in available_ids %} (sunken — fallback content){% endif %}"
+          >
+            <span class="map-hotspot-ring" aria-hidden="true"></span>
+            <span class="map-hotspot-id" aria-hidden="true">{{ id }}</span>
           </a>
           {% endfor %}
-        </g>
-      </svg>
-
-      <!-- ===== PHONE: .nav-list (stacked, ≥44px rows, Sea names) ===== -->
-      <div class="nav-list-banner" aria-hidden="true">
-        <span class="banner-glow"></span>
-        <span class="banner-title">The Archipelago</span>
-        <span class="banner-sub">Nineteen islands await</span>
+        </div>
       </div>
-      <nav class="nav-list" aria-label="Choose an island — an archipelago of nineteen islands">
-        <ul>
-          {% for id in range(19) %}
-          <li class="nav-list-item{% if id not in available_ids %} nav-list-item--sealed{% endif %}">
-            <a href="/level/{{ id }}" aria-label="Level {{ id }} — {{ sea_names[id] }}{% if id not in available_ids %} (sunken — fallback content){% endif %}">
-              <span class="nav-list-id">{{ id }}</span>
-              <span class="nav-list-name">{{ sea_names[id] }}{% if id not in available_ids %} (sunken){% endif %}</span>
-              <span class="nav-list-chev" aria-hidden="true">›</span>
-            </a>
-          </li>
-          {% endfor %}
-        </ul>
-      </nav>
     </div>
     {% endif %}
 
@@ -619,6 +320,19 @@
         } else {
           window.setTimeout(runPrefetch, 1200);
         }
+      })();
+    </script>
+    <script>
+      // Hotspot calibration aid: append `?calibrate` (or `#calibrate`) to the
+      // landing URL to outline + number every map hotspot so positions can be
+      // fine-tuned by eye. No effect on the normal experience.
+      (function () {
+        var on =
+          location.search.indexOf("calibrate") !== -1 ||
+          location.hash.indexOf("calibrate") !== -1;
+        if (!on) return;
+        var map = document.querySelector(".horror-map, .sea-map");
+        if (map) map.classList.add("calibrate");
       })();
     </script>
   </body>

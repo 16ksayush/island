@@ -123,34 +123,19 @@ body {
   font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
 }
 
-/* Theme-wide vignette / atmosphere overlay (pointer-transparent).
-   M15 N7 HYBRID: the atmosphere moves to z-1 (above the new z-0 painted
-   .nav-backdrop, below the z-2 .layer) and gains a themed legibility scrim
-   (added in the M15 block below) so the busy painting never fights the SVG. */
+/* Theme-wide vignette / atmosphere overlay (pointer-transparent). */
 .atmosphere {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
+  z-index: 0;
   background: var(--vignette);
   transition: background var(--t-transition) ease;
 }
 
-/* M15: the interactive layer rides z-2, above the painted backdrop + scrim. On
-   the landing it flex-centers the nav (SVG map / list). Other pages that reuse
-   .layer keep simple block flow via the :not() guard. */
 .layer {
   position: relative;
-  z-index: 2;
-}
-.layer.horror-landing,
-.layer.sea-landing {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(1rem, 3vw, 2.5rem);
+  z-index: 1;
 }
 
 a {
@@ -254,12 +239,48 @@ a {
 }
 
 /* =========================================================================
-   M9 — Horror landing AMBIENT decor (HORROR ONLY). Reused under the M15 N7
-   HYBRID layer: the drifting ghosts / twinkles / shooting stars now live in
-   the z-1 .atmosphere behind the SVG nav. (The old M9b raster `.horror-map`
-   + %-pinned `.map-hotspot` overlay + pannable-map hack were REMOVED at M15;
-   the painted map is REUSED as the z-0 `.nav-backdrop` — see the M15 block.)
+   M9b — Horror landing MAP: illustrated background + clickable hotspots
+   (HORROR ONLY — `.horror-map` is rendered only in the non-sea branch of
+   index.html, and every rule is .theme-horror-scoped so Sea is untouched.)
    ========================================================================= */
+/* Landing wrapper: fills the viewport and CENTERS the whole map. A blurred,
+   darkened copy of the map fills the margins (via ::before) so there is never a
+   dark/empty background, while the sharp map is shown complete (no crop, no
+   scroll) — which keeps the %-positioned hotspots perfectly aligned. */
+.theme-horror .horror-landing {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.theme-horror .horror-landing::before {
+  content: "";
+  position: absolute;
+  inset: -8%;                 /* bleed past edges so the blur has no hard border */
+  background: url("/static/img/horror/landing-map.v2.jpg") center / cover no-repeat;
+  /* Brighter so the margins read as a moody blurred extension of the map
+     (storm reds + fog grays), not a black void. */
+  filter: blur(40px) brightness(1.05) saturate(1.3);
+  transform: scale(1.2);
+  z-index: 0;
+}
+
+/* Warm storm-glow wash over the margins so the sides never read as dead black. */
+.theme-horror .horror-landing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 0% 30%, rgba(120, 30, 40, 0.28), transparent 70%),
+    radial-gradient(60% 50% at 100% 35%, rgba(90, 40, 110, 0.28), transparent 70%);
+}
 
 /* --- Ambient drifting ghosts (decorative, side margins) ----------------- */
 .theme-horror .horror-ambient {
@@ -355,11 +376,100 @@ a {
   100% { transform: translate(200px, 188px) scale(0.6); opacity: 0; }
 }
 
-/* (M15 N7: the M9b raster `.horror-map`/`.horror-map-img`/`.horror-map-toggle`/
-   `.horror-map-hotspots`/`.map-hotspot`/`.map-hotspot-ring`/`.map-hotspot-id` +
-   `.calibrate` rules were REMOVED. The painted map is now the z-0 `.nav-backdrop`
-   and navigation is the drift-free SVG `.nav-map` + reflow `.nav-list` — styled
-   in the M15 block near the end of this file.) */
+.theme-horror .horror-map {
+  position: relative;
+  z-index: 1;                 /* sharp map sits above the blurred fill */
+  margin: 0;
+  line-height: 0;             /* kill descender gap under the <img> */
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
+.theme-horror .horror-map-img {
+  display: block;
+  width: auto;
+  height: auto;
+  /* Fit the WHOLE map within the viewport (no crop) so every location shows and
+     hotspots stay aligned; the blurred ::before fills any letterbox margin. */
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
+/* Theme toggle floated over the map (no dark header bar). */
+.theme-horror .horror-map-toggle {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 6;
+}
+
+/* Hotspot layer fills the image; individual hotspots are %-positioned so they
+   track the art at any size. */
+.theme-horror .horror-map-hotspots {
+  position: absolute;
+  inset: 0;
+}
+
+.theme-horror .map-hotspot {
+  position: absolute;
+  width: 6%;                  /* tap target over each location (avoid overlap) */
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);  /* coords are the location CENTER */
+  border-radius: 50%;
+  display: block;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Invisible at rest; a warm amber glow blooms on hover/keyboard-focus so the
+   painted numbers stay the visual anchor. */
+.theme-horror .map-hotspot-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 176, 0, 0) 60%, transparent 75%);
+  box-shadow: 0 0 0 2px rgba(255, 176, 0, 0), 0 0 18px 4px rgba(255, 176, 0, 0);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+.theme-horror .map-hotspot:hover .map-hotspot-ring,
+.theme-horror .map-hotspot:focus-visible .map-hotspot-ring {
+  background: radial-gradient(circle, rgba(255, 176, 0, 0.22), transparent 70%);
+  box-shadow: 0 0 0 2px rgba(255, 176, 0, 0.85), 0 0 24px 7px rgba(255, 176, 0, 0.45);
+}
+.theme-horror .map-hotspot:focus-visible {
+  outline: none;
+}
+
+/* Sealed/absent locations glow cold blue instead of amber on hover. */
+.theme-horror .map-hotspot.is-sealed:hover .map-hotspot-ring,
+.theme-horror .map-hotspot.is-sealed:focus-visible .map-hotspot-ring {
+  background: radial-gradient(circle, rgba(150, 170, 210, 0.18), transparent 70%);
+  box-shadow: 0 0 0 2px rgba(150, 170, 210, 0.7), 0 0 20px 6px rgba(120, 140, 180, 0.4);
+}
+
+/* The numeric id label is only shown in ?calibrate mode (positioning aid). */
+.theme-horror .map-hotspot-id {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 4px #000;
+}
+
+/* Calibration overlay: outline + number every hotspot so positions can be
+   eyeballed against the art and nudged. Toggled by the ?calibrate query. */
+.theme-horror .horror-map.calibrate .map-hotspot {
+  outline: 1px solid rgba(0, 255, 120, 0.9);
+  background: rgba(0, 255, 120, 0.14);
+  border-radius: 4px;
+}
+.theme-horror .horror-map.calibrate .map-hotspot-id {
+  display: flex;
+}
 
 /* Cloaked hooded figure — faint, anchored LOW-CENTER behind the grid. Kept at
    very low opacity and small/short so it reads as a distant silhouette and
@@ -395,13 +505,52 @@ a {
 }
 
 /* =========================================================================
-   M10 — SEA (light) landing AMBIENT decor (SEA ONLY). Reused under the M15 N7
-   HYBRID layer: the drifting balloons / gulls / clouds now live in the z-1
-   .atmosphere behind the SVG nav. EVERY rule below is .theme-sea-scoped so
-   Horror is byte-untouched (NF-SR4). (The old M10 raster `.sea-map` + %-pinned
-   `.map-hotspot` overlay + pannable-map hack were REMOVED at M15; the painted
-   archipelago map is REUSED as the z-0 `.nav-backdrop` — see the M15 block.)
+   M10 — SEA (light) landing MAP: illustrated archipelago + clickable hotspots
+   (SEA ONLY — `.sea-map*` is rendered only in the sea branch of index.html,
+   and EVERY rule below is .theme-sea-scoped so Horror is byte-untouched
+   (NF-SR4). Parallel to the M9b Horror map block above; the leaf hotspot
+   contract (.map-hotspot / .map-hotspot-ring / .map-hotspot-id / .is-sealed)
+   is shared-by-name but styled per-theme — there is NO bare .map-hotspot rule.
+   Art: static/img/light/landing-map.v2.webp, 1399x768 (~1.82:1, wide).)
    ========================================================================= */
+/* Landing wrapper: fills the viewport and CENTERS the whole map. A blurred,
+   brightened copy of the art fills the letterbox margins (via ::before) in a
+   LIGHT sea/sky wash — NOT Horror's dark storm wash — so the sides read as open
+   sea/sky, never a void. The sharp map is shown complete (no crop, no scroll),
+   keeping the %-positioned hotspots perfectly aligned across aspect ratios. */
+.theme-sea .sea-landing {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.theme-sea .sea-landing::before {
+  content: "";
+  position: absolute;
+  inset: -8%;                 /* bleed past edges so the blur has no hard border */
+  background: url("/static/img/light/landing-map.v2.webp") center / cover no-repeat;
+  /* Brighten + desaturate slightly so the margins read as a soft, hazy
+     extension of the sunlit map (open sky/sea), not a hard frame. */
+  filter: blur(40px) brightness(1.12) saturate(1.1);
+  transform: scale(1.2);
+  z-index: 0;
+}
+/* Soft sky/sand wash over the margins so the sides read as open sea & sky. */
+.theme-sea .sea-landing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 0% 25%, rgba(186, 230, 253, 0.32), transparent 70%),
+    radial-gradient(60% 55% at 100% 80%, rgba(254, 243, 199, 0.28), transparent 70%);
+}
 
 /* --- Sea ambient sky decoration (balloons / gulls / clouds) -------------- */
 /* Lives at z-index:0, pointer-events:none, BEHIND `.sea-map` (z-1), so the
@@ -482,11 +631,109 @@ a {
   100% { transform: translateX(128vw); opacity: 0; }
 }
 
-/* (M15 N7: the M10 raster `.sea-map`/`.sea-map-img`/`.sea-map-toggle`/
-   `.sea-map-hotspots`/`.map-hotspot`/`.map-hotspot-ring`/`.map-hotspot-id` +
-   `.calibrate` rules were REMOVED. The painted archipelago is now the z-0
-   `.nav-backdrop` and navigation is the drift-free SVG `.nav-map` + reflow
-   `.nav-list` — styled in the M15 block near the end of this file.) */
+.theme-sea .sea-map {
+  position: relative;
+  z-index: 1;                 /* sharp map sits above the blurred fill */
+  margin: 0;
+  line-height: 0;             /* kill descender gap under the <img> */
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
+.theme-sea .sea-map-img {
+  display: block;
+  width: auto;
+  height: auto;
+  /* Fit the WHOLE map within the viewport (no crop) so every island shows and
+     hotspots stay aligned; the blurred ::before fills any letterbox margin.
+     The art is ~1.82:1, so on most screens the letterbox is top/bottom. */
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
+/* Theme toggle floated over the painted pill (top-right) — R-S3: the live
+   control sits directly over the art's painted toggle pill. */
+.theme-sea .sea-map-toggle {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 6;
+}
+
+/* Hotspot layer fills the image; individual hotspots are %-positioned so they
+   track the art at any size. */
+.theme-sea .sea-map-hotspots {
+  position: absolute;
+  inset: 0;
+}
+
+.theme-sea .map-hotspot {
+  position: absolute;
+  width: 6%;                  /* tap target over each island (avoid overlap) */
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);  /* coords are the island CENTER */
+  border-radius: 50%;
+  display: block;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Invisible at rest; a deep-azure ring blooms on hover/keyboard-focus. Colors
+   chosen for WCAG AA contrast over the bright, sunlit art (dark blue ring +
+   white-cored glow read clearly against sky/sand/sea). */
+.theme-sea .map-hotspot-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(2, 132, 199, 0) 60%, transparent 75%);
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0), 0 0 18px 4px rgba(2, 132, 199, 0);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+.theme-sea .map-hotspot:hover .map-hotspot-ring,
+.theme-sea .map-hotspot:focus-visible .map-hotspot-ring {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.5), transparent 70%);
+  box-shadow:
+    0 0 0 3px rgba(3, 78, 121, 0.95),   /* dark navy outline — AA over light art */
+    0 0 24px 7px rgba(2, 132, 199, 0.55);
+}
+.theme-sea .map-hotspot:focus-visible {
+  outline: none;
+}
+
+/* Sunken/absent islands: glow a muted teal-grey (submerged) instead of azure. */
+.theme-sea .map-hotspot.is-sealed:hover .map-hotspot-ring,
+.theme-sea .map-hotspot.is-sealed:focus-visible .map-hotspot-ring {
+  background: radial-gradient(circle, rgba(203, 230, 240, 0.32), transparent 70%);
+  box-shadow:
+    0 0 0 3px rgba(51, 94, 117, 0.9),   /* deep muted teal — AA over light art */
+    0 0 20px 6px rgba(90, 140, 165, 0.45);
+}
+
+/* The numeric id label is only shown in ?calibrate mode (positioning aid).
+   Dark text + white shadow so it reads over the bright art. */
+.theme-sea .map-hotspot-id {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #06283d;
+  text-shadow: 0 0 4px #fff;
+}
+
+/* Calibration overlay twin: outline + number every hotspot so positions can be
+   eyeballed against the art and nudged. Toggled by the ?calibrate query (the JS
+   now selects ".horror-map, .sea-map"). */
+.theme-sea .sea-map.calibrate .map-hotspot {
+  outline: 1px solid rgba(217, 30, 90, 0.9);   /* magenta — high contrast on sea */
+  background: rgba(217, 30, 90, 0.14);
+  border-radius: 4px;
+}
+.theme-sea .sea-map.calibrate .map-hotspot-id {
+  display: flex;
+}
 
 /* ---- Level page: full scene, but guarded so it can't wash the slideshow -- */
 /* R-H6 LOCKED: the per-level page gets the SAME full corridor scene (the navy
@@ -598,11 +845,189 @@ a {
   }
 }
 
-/* (M15 N7: the M9b/M10 MOBILE pannable-map hacks — `.horror-landing`/
-   `.sea-landing` turned into 130vw/175vw 2-axis scroll/pan surfaces with
-   %-pinned `.map-hotspot`s — were REMOVED. M15 replaces them with a true reflow:
-   the SVG `.nav-map` is hidden ≤767px and the `.nav-list` stacked list is shown,
-   so there is no horizontal scroll and no pannable surface. See the M15 block.) */
+/* =========================================================================
+   M9b MOBILE — Horror landing map on small / touch screens (HORROR ONLY)
+   -------------------------------------------------------------------------
+   PROBLEM: the map art is ~1.25:1 (1402x1122, squarish-landscape). On a narrow
+   portrait phone the desktop "fit the WHOLE map to the viewport" rule renders
+   it tiny (e.g. 390px wide -> ~312px tall) and the 6%-wide hotspots collapse to
+   ~23px — below the ~44px touch-target floor — with large empty letterbox bands.
+
+   STRATEGY (scoped to .theme-horror, mobile breakpoints only; desktop is left
+   exactly as authored above): instead of fitting-to-width-and-tiny, render the
+   map LARGER THAN the viewport and turn `.horror-landing` into a 2-axis scroll
+   /pan container. Hotspots stay %-positioned over the image, so enlarging the
+   image enlarges both the hotspots and their spacing while their alignment is
+   preserved automatically (they remain a % of the same box). Page-level
+   overflow is avoided because the scrolling lives INSIDE `.horror-landing`
+   (fixed to the viewport), not on <body>.
+
+   Two tiers, sized so the hotspot tap target clears ~44px (WCAG 2.5.5/2.5.8):
+     <=768px : img width 130vw  -> e.g. 768px vp => 998px img, hotspot 6% ~= 60px
+     <=480px : img width 175vw  -> e.g. 390px vp => 682px img, hotspot 7% ~= 48px
+   ========================================================================= */
+@media (max-width: 768px) {
+  /* Turn the landing into a pannable scroll surface pinned to the viewport.
+     position:fixed + inset:0 keeps the *page* from gaining scrollbars/overflow;
+     all panning happens within this box. overscroll-behavior:contain stops the
+     scroll from chaining to <body>. */
+  .theme-horror .horror-landing {
+    position: fixed;
+    inset: 0;
+    min-height: 0;            /* override desktop min-height:100vh */
+    /* Let the oversized map be reached on both axes via touch/scroll. */
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-x pan-y;
+    /* The map is wider/taller than the viewport, so flex-centering would clip
+       the top-left; start from the corner and let the user pan outward. */
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  /* The blurred fill + storm-glow are position:absolute inside the now-scrolling
+     landing. Pin them to the viewport (fixed) so they cover the visible frame
+     regardless of scroll position and never add to the scrollable area. */
+  .theme-horror .horror-landing::before,
+  .theme-horror .horror-landing::after,
+  .theme-horror .horror-ambient {
+    position: fixed;
+  }
+
+  /* Enlarge the map beyond the viewport so locations are big enough to tap.
+     Override the desktop max-width/max-height:100vw/100vh + width:auto fit. */
+  .theme-horror .horror-map {
+    max-width: none;
+    max-height: none;
+    flex: 0 0 auto;           /* don't let flex shrink it back down */
+  }
+  .theme-horror .horror-map-img {
+    width: 130vw;             /* > viewport width => map is comfortably large */
+    max-width: none;          /* defeat the desktop max-width:100vw cap */
+    max-height: none;         /* defeat the desktop max-height:100vh cap */
+    height: auto;             /* keep the natural 1.25:1 aspect (no distortion) */
+  }
+
+  /* Keep the theme toggle reachable while panning and clear of any hotspot:
+     pin it to the viewport corner (not the scrolling map) and shrink it a touch
+     so it doesn't sit over the top-left location cluster. */
+  .theme-horror .horror-map-toggle {
+    position: fixed;
+    top: 0.6rem;
+    right: 0.6rem;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Tighter phones: enlarge further so the hotspots clear ~44px, and widen the
+     hotspot itself to 7% as extra touch-target insurance (still no overlap
+     between adjacent painted locations at this spacing). */
+  .theme-horror .horror-map-img {
+    width: 175vw;             /* 390px vp => ~682px map; 6% would be ~41px */
+  }
+  .theme-horror .map-hotspot {
+    width: 7%;                /* ~48px tap target at the 480px map size */
+  }
+  /* Toggle: keep it compact on the smallest screens. */
+  .theme-horror .horror-map-toggle {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.6rem;
+  }
+  /* Tone the ambient ghosts down on small screens (they're decorative and the
+     side margins are mostly off-screen while panning); avoids any wide-element
+     contribution and keeps paint cost low. */
+  .theme-horror .horror-ghost {
+    width: clamp(20px, 8vw, 34px);
+  }
+}
+
+/* =========================================================================
+   M10 MOBILE — Sea landing map on small / touch screens (SEA ONLY)
+   -------------------------------------------------------------------------
+   PROBLEM: the Sea art is WIDER (~1.82:1, 1399x768) than the Horror map
+   (~1.25:1). On a narrow portrait phone, fitting the WHOLE map to the viewport
+   makes it even tinier than Horror's and the 6% hotspots collapse far below the
+   ~44px touch floor, with large empty letterbox bands.
+
+   STRATEGY (scoped to .theme-sea, mobile breakpoints only; desktop above is
+   untouched): mirror the proven Horror pan-to-fit model — render the map LARGER
+   THAN the viewport and turn `.sea-landing` into a 2-axis scroll/pan container.
+   Hotspots stay %-positioned over the image, so enlarging the image enlarges
+   both the hotspots and their spacing while alignment is preserved (still a % of
+   the same box). The wider aspect ratio means a longer vertical pan than Horror
+   (R-S8); the start corner shows islands 0-4 first.
+
+   Two tiers, sized so the hotspot tap target clears ~44px (WCAG 2.5.5/2.5.8):
+     <=768px : img width 130vw
+     <=480px : img width 175vw, hotspot widened to 7%
+   ========================================================================= */
+@media (max-width: 768px) {
+  /* Turn the landing into a pannable scroll surface pinned to the viewport so
+     the *page* never gains scrollbars; all panning happens within this box. */
+  .theme-sea .sea-landing {
+    position: fixed;
+    inset: 0;
+    min-height: 0;            /* override desktop min-height:100vh */
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-x pan-y;
+    /* Start from the top-left corner so islands 0-4 are in view first; the user
+       pans down/right to reach the lower-id islands (R-S8). */
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  /* Pin the blurred fill + sky/sand wash + ambient decor to the viewport
+     (fixed) so they cover the visible frame at any scroll position and add
+     nothing to the scrollable area (mirrors the Horror ambient pinning). */
+  .theme-sea .sea-landing::before,
+  .theme-sea .sea-landing::after,
+  .theme-sea .sea-ambient {
+    position: fixed;
+  }
+
+  /* Enlarge the map beyond the viewport so islands are big enough to tap. */
+  .theme-sea .sea-map {
+    max-width: none;
+    max-height: none;
+    flex: 0 0 auto;           /* don't let flex shrink it back down */
+  }
+  .theme-sea .sea-map-img {
+    width: 130vw;             /* > viewport width => map is comfortably large */
+    max-width: none;          /* defeat the desktop max-width:100vw cap */
+    max-height: none;         /* defeat the desktop max-height:100vh cap */
+    height: auto;             /* keep the natural ~1.82:1 aspect (no distortion) */
+  }
+
+  /* Keep the toggle reachable while panning: pin it to the viewport corner
+     (not the scrolling map) and shrink it a touch. */
+  .theme-sea .sea-map-toggle {
+    position: fixed;
+    top: 0.6rem;
+    right: 0.6rem;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Tighter phones: enlarge further and widen the hotspot to 7% as extra
+     touch-target insurance (still no overlap between adjacent islands). */
+  .theme-sea .sea-map-img {
+    width: 175vw;
+  }
+  .theme-sea .map-hotspot {
+    width: 7%;                /* ~44px tap target at the 480px map size */
+  }
+  .theme-sea .sea-map-toggle {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.6rem;
+  }
+}
 
 /* ---- Theme toggle (present on every page) ------------------------------- */
 /* ============================ App brand mark ============================ */
@@ -1574,282 +1999,5 @@ a {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-  }
-}
-
-/* =========================================================================
-   M15 — N7 HYBRID landing (ARCHITECTURE §15.2.3): painted raster BACKDROP (z-0)
-   -> themed scrim/fog (z-1 .atmosphere) -> rich filtered SVG `.nav-map` + ornate
-   nav-nodes (z-2 .layer)  <->  `.nav-list` (phone). Replaces the removed raster
-   `.horror-map`/`.sea-map` + `.map-hotspot` overlay + pannable hack. Reuses the
-   existing token system; NO new tokens, NO :root edits. The single map<->list
-   boundary is at 768px. Every theme-specific rule is scoped under
-   .theme-horror / .theme-sea so the two worlds never cross-contaminate.
-   ========================================================================= */
-
-/* ---- z-0 painted backdrop (N7) — the EXISTING maps REUSED as ambient depth.
-   CSS background-image (not <img>): purely decorative, no a11y surface, trivially
-   cover-crops, theme-scoped in one place. The cover crop is DECOUPLED from the
-   SVG viewBox (which carries all structure), so it introduces ZERO node drift.
-   Only crossfades opacity/background on theme toggle (no keyframe). */
-.nav-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  transition: opacity var(--t-transition) ease, background-image var(--t-transition) ease;
-}
-.theme-horror .nav-backdrop { background-image: url("/static/img/horror/landing-map.v2.jpg"); }
-.theme-sea    .nav-backdrop { background-image: url("/static/img/light/landing-map.v2.webp"); }
-
-/* ---- z-1 legibility scrim layered into the existing .atmosphere ----------
-   A semi-opaque themed wash + the existing --vignette so the busy painting does
-   not fight the SVG / labels. Horror -> deep-navy radial re-darken; Sea -> soft
-   azure->white wash (kept light/airy). The drifting fog stays on the existing
-   .theme-horror .atmosphere::before/::after pseudo-elements (untouched above). */
-.theme-horror .atmosphere {
-  background:
-    var(--vignette),
-    radial-gradient(ellipse 70% 60% at 50% 46%, rgba(8, 12, 24, 0.30), rgba(5, 7, 13, 0.74) 100%);
-}
-.theme-sea .atmosphere {
-  background:
-    var(--vignette),
-    linear-gradient(180deg, rgba(224, 242, 254, 0.42) 0%, rgba(186, 230, 253, 0.30) 55%, rgba(56, 189, 248, 0.34) 100%);
-}
-
-/* ---- chrome position override on the nav landing (analog of the old map
-   toggle position rules; the brand logo keeps its shared top-left rule). */
-.nav-toggle {
-  position: fixed;
-  top: 1rem;
-  right: 1.1rem;
-  z-index: 6;
-}
-
-/* ====================== .nav-map (desktop/tablet SVG) ===================== */
-.nav-map {
-  display: none;                       /* phone default: hidden (list shows) */
-  width: 100%;
-  max-width: min(96vw, 72rem);
-  height: auto;
-}
-.nav-scene { transition: opacity var(--t-transition) ease; }
-/* slow flame/sun breathe (sconces, sun disc); frozen under reduce below */
-.scene-flicker { animation: nav-flicker 7s ease-in-out infinite; transform-origin: center; }
-@keyframes nav-flicker { 0%, 100% { opacity: 0.85; } 45% { opacity: 1; } 70% { opacity: 0.7; } }
-
-/* nav-node = interactive link inside the viewBox. R-M15-11 legibility: every
-   node LIFTS off the painting (drop-shadow) + carries an OPAQUE themed backing
-   plate behind its number so it reads over ANY backdrop region. */
-.nav-node { cursor: pointer; outline: none; }
-.nav-node-hit { fill: transparent; }   /* transparent ≥44px CSS-px hit target */
-.nav-node-label {
-  text-anchor: middle;
-  font-weight: 800;
-  font-size: 30px;
-  paint-order: stroke;
-  stroke-width: 4px;
-  stroke-linejoin: round;
-}
-
-/* ---- Horror: ornate mystical PORTAL glyph ------------------------------- */
-.theme-horror .nav-node-plate { fill: #120d08; stroke: var(--accent); stroke-width: 1.5px; opacity: 0.94; }
-.theme-horror .nav-node-label { fill: var(--fg); stroke: #05070d; }
-/* whole portal lifts off the painting (feDropShadow analog) */
-.theme-horror .nav-node-glyph { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.7)); }
-/* arch aura + carved frame */
-.theme-horror .portal-aura { fill: url(#h-rune); opacity: 0.55; }
-.theme-horror .portal-frame { fill: #241a11; stroke: var(--accent); stroke-width: 2.5px; }
-.theme-horror .portal-reveal { fill: #161009; }
-.theme-horror .portal-leaf { fill: url(#h-door-leaf); stroke: #5b4327; stroke-width: 1px; }
-/* glowing amber seam of light + threshold under-glow */
-.theme-horror .portal-seam { stroke: #ffd27a; stroke-width: 2px; opacity: 0.85; filter: url(#h-glyph-glow); }
-.theme-horror .portal-threshold { fill: #ffb000; opacity: 0.55; filter: url(#h-glyph-glow); }
-/* keystone rune (glowing) */
-.theme-horror .portal-keystone-glow { fill: url(#h-rune); opacity: 0.8; }
-.theme-horror .portal-rune { stroke: #ffe6ad; stroke-width: 1.6px; fill: none; stroke-linecap: round; opacity: 0.95; }
-/* wrought-iron hinges + studs */
-.theme-horror .portal-studs { fill: #6b5836; }
-.theme-horror .portal-hinges { stroke: #6b5836; stroke-width: 2px; fill: none; stroke-linecap: round; }
-/* glowing keyhole / handle */
-.theme-horror .portal-keyhole { fill: #ffd27a; filter: url(#h-glyph-glow); }
-.theme-horror .portal-keyhole-stem { stroke: #ffd27a; stroke-width: 2px; stroke-linecap: round; }
-/* weathered texture (faint, on the leaves) */
-.theme-horror .portal-leaf { filter: url(#h-weather); }
-/* boards hidden unless sealed */
-.theme-horror .portal-boards { display: none; }
-
-/* Horror available hover/focus = amber glow, "open" read */
-.theme-horror .nav-node:hover .portal-frame,
-.theme-horror .nav-node:focus-visible .portal-frame {
-  stroke: #ffd27a;
-  stroke-width: 3.5px;
-  filter: drop-shadow(0 0 14px var(--accent));
-}
-.theme-horror .nav-node:hover .portal-seam,
-.theme-horror .nav-node:focus-visible .portal-seam { stroke-width: 4px; opacity: 1; }
-.theme-horror .nav-node:hover .nav-node-label,
-.theme-horror .nav-node:focus-visible .nav-node-label { fill: #ffd27a; }
-
-/* Horror sealed portal = darkened / locked / boarded, amber -> ash */
-.theme-horror .nav-node--sealed .portal-frame { stroke: #5b5345; }
-.theme-horror .nav-node--sealed .portal-leaf { fill: #15110c; filter: none; }
-.theme-horror .nav-node--sealed .portal-aura,
-.theme-horror .nav-node--sealed .portal-keystone-glow,
-.theme-horror .nav-node--sealed .portal-threshold { opacity: 0; }
-.theme-horror .nav-node--sealed .portal-seam,
-.theme-horror .nav-node--sealed .portal-keyhole,
-.theme-horror .nav-node--sealed .portal-keyhole-stem,
-.theme-horror .nav-node--sealed .portal-rune { stroke: #6b6253; fill: #6b6253; filter: none; opacity: 0.6; }
-.theme-horror .nav-node--sealed .portal-boards { display: block; stroke: #6b6253; stroke-width: 5px; stroke-linecap: round; }
-.theme-horror .nav-node--sealed .nav-node-glyph { filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.6)); opacity: 0.86; }
-.theme-horror .nav-node--sealed .nav-node-label { fill: var(--muted); }
-.theme-horror .nav-node--sealed .nav-node-plate { stroke: var(--muted); }
-
-/* ---- Sea: ornate enchanted ISLE glyph ----------------------------------- */
-.theme-sea .nav-node-plate { fill: #fffaf0; stroke: #e8c98a; stroke-width: 1.5px; opacity: 0.94; }
-.theme-sea .nav-node-label { fill: #0c4a6e; stroke: #fffaf0; }
-.theme-sea .nav-node-glyph { filter: drop-shadow(0 5px 9px rgba(2, 40, 70, 0.45)); }
-/* layered sand + surf rings + beacon glow */
-.theme-sea .isle-surf { fill: none; stroke: #ffffff; opacity: 0.85; }
-.theme-sea .isle-surf--outer { stroke-width: 5px; }
-.theme-sea .isle-surf--inner { stroke-width: 3px; opacity: 0.6; }
-.theme-sea .isle-sand { stroke: #e8c98a; stroke-width: 2px; }
-.theme-sea .isle-sand--lower { fill: url(#s-sand); }
-.theme-sea .isle-sand--upper { fill: #fbeec6; }
-.theme-sea .isle-beacon-glow { fill: url(#s-isle-glow); opacity: 0.5; }
-/* landmark variety */
-.theme-sea .isle-trunk { stroke: #8a5a2b; stroke-width: 4px; fill: none; stroke-linecap: round; }
-.theme-sea .isle-palm { fill: #2f8f5b; }
-.theme-sea .isle-coconut { fill: #7a4a1f; }
-.theme-sea .isle-hut, .theme-sea .isle-wall { fill: #b5743a; stroke: #7a4a1f; stroke-width: 1px; }
-.theme-sea .isle-roof { fill: #7a4a1f; }
-.theme-sea .isle-door { fill: #4a2d12; }
-.theme-sea .isle-merlon { fill: #b5743a; }
-/* tiny fantasy lantern beacon + glow flourish */
-.theme-sea .isle-lantern-glow { fill: url(#s-isle-glow); opacity: 0.85; }
-.theme-sea .isle-lantern { fill: #ffd27a; filter: url(#s-isle-soft); }
-
-/* Sea available hover/focus = azure glow + lift */
-.theme-sea .nav-node:hover .isle-surf,
-.theme-sea .nav-node:focus-visible .isle-surf { stroke: var(--accent); stroke-width: 7px; opacity: 1; }
-.theme-sea .nav-node:hover .isle-sand--lower,
-.theme-sea .nav-node:focus-visible .isle-sand--lower { filter: drop-shadow(0 0 12px rgba(2, 132, 199, 0.6)); }
-.theme-sea .nav-node:hover .nav-node-label,
-.theme-sea .nav-node:focus-visible .nav-node-label { fill: var(--accent); }
-
-/* Sea sealed isle = half-submerged / slate */
-.theme-sea .nav-node--sealed .isle-sand { fill: #9fb6c2; stroke: #7e98a6; }
-.theme-sea .nav-node--sealed .isle-palm { fill: #6d8a7a; }
-.theme-sea .nav-node--sealed .isle-hut,
-.theme-sea .nav-node--sealed .isle-wall,
-.theme-sea .nav-node--sealed .isle-roof,
-.theme-sea .nav-node--sealed .isle-merlon { fill: #7e98a6; stroke: #5f7785; }
-.theme-sea .nav-node--sealed .isle-surf { stroke: #7e98a6; opacity: 0.6; }
-.theme-sea .nav-node--sealed .isle-beacon-glow,
-.theme-sea .nav-node--sealed .isle-lantern-glow,
-.theme-sea .nav-node--sealed .isle-lantern { opacity: 0.15; }
-.theme-sea .nav-node--sealed .nav-node-glyph { filter: drop-shadow(0 4px 7px rgba(2, 40, 70, 0.4)); opacity: 0.88; }
-.theme-sea .nav-node--sealed .nav-node-label { fill: #43606e; }
-.theme-sea .nav-node--sealed .nav-node-plate { fill: #d6e4ec; stroke: #7e98a6; }
-
-/* Visible SVG focus indicator (R-M15-8) — explicit, since SVG focus rings vary */
-.nav-node:focus-visible .nav-node-hit {
-  stroke: var(--accent);
-  stroke-width: 3px;
-  rx: 8px;
-  paint-order: stroke;
-}
-.theme-horror .nav-node:focus-visible .nav-node-hit { stroke: #ffd27a; }
-
-/* ====================== .nav-list (phone) ================================= */
-.nav-list { display: block; width: 100%; max-width: 30rem; }
-.nav-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-.nav-list-item a {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  min-height: clamp(2.75rem, 8vw, 3.25rem);     /* ≥44px by construction */
-  padding: 0.5rem 0.85rem;
-  border-radius: 0.75rem;
-  text-decoration: none;
-  color: var(--fg);
-  border: 1.5px solid var(--tile-border);
-  background: var(--tile-bg);
-  box-shadow: 0 2px 10px var(--tile-shadow);
-  transition: transform 0.12s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-}
-.nav-list-id {
-  flex: 0 0 auto;
-  width: 2.1rem;
-  height: 2.1rem;
-  border-radius: 0.55rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 1.05rem;
-  color: var(--accent);
-  border: 1.5px solid var(--accent);
-  background: rgba(0, 0, 0, 0.25);
-}
-.theme-sea .nav-list-id { background: #fffaf0; color: var(--accent); }
-.nav-list-name { flex: 1 1 auto; font-weight: 600; font-size: 1rem; }
-.nav-list-chev { flex: 0 0 auto; color: var(--accent); font-size: 1.4rem; font-weight: 700; }
-.nav-list-item a:hover,
-.nav-list-item a:focus-visible {
-  transform: translateX(2px);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft), 0 4px 14px var(--tile-shadow);
-  outline: none;
-}
-/* sealed list rows */
-.nav-list-item--sealed a { opacity: 0.78; border-style: dashed; }
-.theme-horror .nav-list-item--sealed .nav-list-id { color: var(--muted); border-color: var(--muted); }
-.theme-horror .nav-list-item--sealed .nav-list-name,
-.theme-horror .nav-list-item--sealed .nav-list-chev { color: var(--muted); }
-.theme-sea .nav-list-item--sealed .nav-list-id { color: #43606e; border-color: #7e98a6; background: #d6e4ec; }
-.theme-sea .nav-list-item--sealed .nav-list-name { color: #43606e; }
-.theme-sea .nav-list-item--sealed .nav-list-chev { color: #7e98a6; }
-
-/* reduced decorative header banner above the list (phone-only, decorative) */
-.nav-list-banner {
-  display: block;
-  position: relative;
-  width: 100%;
-  max-width: 30rem;
-  text-align: center;
-  margin-bottom: 1rem;
-  padding: 1.1rem 1rem 1rem;
-  border-radius: 1rem;
-  overflow: hidden;
-  border: 1.5px solid var(--tile-border);
-  background: var(--bg-2);
-}
-.banner-glow { position: absolute; inset: 0; background: var(--vignette); opacity: 0.6; pointer-events: none; }
-.banner-title { display: block; position: relative; font-weight: 800; font-size: 1.35rem; color: var(--accent); }
-.banner-sub { display: block; position: relative; font-size: 0.85rem; color: var(--muted); margin-top: 0.15rem; }
-
-/* ====================== the single map<->list boundary ==================== */
-@media (min-width: 768px) {
-  .nav-map { display: block; }                      /* SVG scenic map */
-  .nav-list,
-  .nav-list-banner { display: none; }               /* list out of a11y tree */
-}
-
-/* ====================== M15 reduced motion (extend) ====================== */
-/* The reused ambient spans (.horror-ghost/-twinkle/-star, .sea-balloon/-bird/
-   -cloud) are ALREADY frozen by the existing reduce blocks above (same
-   selectors). The .nav-backdrop only crossfades on toggle (a transition, frozen
-   by the global rule). The only NEW keyframe motion is the sconce/sun breathe
-   `.scene-flicker` -> freeze to a steady opacity frame. */
-@media (prefers-reduced-motion: reduce) {
-  .scene-flicker {
-    animation: none !important;
-    opacity: 0.85;
   }
 }
