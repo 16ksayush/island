@@ -1,23 +1,21 @@
-"""M11 — image-caption tests (pytest + FastAPI TestClient, Drive fully mocked).
+"""Image-caption tests (pytest + FastAPI TestClient, Cloudinary mocked).
 
-Captions are an OPTIONAL, additive feature keyed by ``(level, filename)``:
-``/api/levels/{id}/photos`` adds ``caption: {sea, horror}`` to an image element
-ONLY when a caption exists for that (level, filename); otherwise the image
-element is byte-for-byte the old ``{file_id, url}`` contract.
+M13 conversion: captions are now keyed by ``(level, filename_stem)`` where the
+stem is the Cloudinary ``public_id`` with its random ``_xxxxxx`` suffix stripped
+(e.g. public_id ``1_uuasv3`` -> stem ``1``; ``2.1_zzzzaa`` -> stem ``2.1``). The
+``/api/levels/{id}/photos`` image element adds ``caption: {sea, horror}`` ONLY
+when a caption exists for that (level, stem); otherwise it is exactly
+``{file_id, url}`` where ``file_id`` is the public_id and ``url`` is the keyless
+``res.cloudinary.com`` CDN link.
 
-These tests are deterministic and do NOT depend on the real
-``app/captions.json`` content — they control the caption map directly by
-seeding the module-cache global ``captions._captions`` (the same global the
-loader/cache use), or by pointing the loader at a temp path. The Drive layer is
-the same hermetic fake from ``conftest.py`` (folders 1, 2 present; 3+ missing).
+Converted from the M11/Drive version: caption KEYS changed from Drive filenames
+(``1.1.jpeg``) to stems (``1``/``2.1``), the back-compat assert checks the CDN
+``url`` (no ``/media/`` proxy), and the CapQ1 regression now guards "keyed by
+stem, not by public_id".
 
-Covers the M11 acceptance items:
-  1. Payload WITH caption: image element carries {sea, horror} expected strings.
-  2. Payload WITHOUT caption (back-compat): keys are exactly {file_id, url}.
-  3. Partial entry (only sea) -> horror is "" (no missing-key error).
-  4. Loader tolerance: missing file / malformed JSON -> empty map, never raises.
-  5. POST /api/refresh reloads captions (reflects a changed source).
-  6. /level/{id} HTML carries the slide-caption render path + style.css?v=6.
+These tests do NOT depend on the real ``app/captions.json`` content — they seed
+the caption cache directly (``captions._captions``) or point the loader at a
+temp file. Cloudinary stays mocked via ``conftest.py`` (levels 1, 2, 8 present).
 """
 
 from __future__ import annotations
@@ -33,12 +31,7 @@ from tests import conftest as fake
 
 @pytest.fixture(autouse=True)
 def reset_caption_cache():
-    """Isolate the module-level caption cache before & after each test.
-
-    The production cache is a module global (``captions._captions``); reset it
-    to ``None`` (the "not yet loaded" sentinel) so one test's seeded map cannot
-    leak into another, and so the cache lazily reloads from disk afterwards.
-    """
+    """Isolate the module-level caption cache before & after each test."""
     original = captions._captions
     captions._captions = None
     yield
@@ -51,18 +44,18 @@ def _seed(mapping):
 
 
 # ===========================================================================
-# 1. Payload WITH caption
+# 1. Payload WITH caption (keyed by filename STEM)
 # ===========================================================================
 def test_photo_payload_includes_caption_when_present(client):
-    """A captioned (level, filename) emits caption: {sea, horror} verbatim.
+    """A captioned (level, stem) emits caption: {sea, horror} verbatim.
 
-    Folder 1 holds images named '1.1.jpeg' (IMG_1A) and '1.2.jpeg' (IMG_1B)
-    in the fake Drive tree. We caption ONLY '1.1.jpeg'.
+    Level 1 holds public_ids ``1_uuasv3`` (stem "1") and ``1.2_abc123`` (stem
+    "1.2"). We caption ONLY stem "1".
     """
     _seed(
         {
             "1": {
-                "1.1.jpeg": {
+                fake.STEM_1A: {
                     "sea": "Sunlit cove of Island 1",
                     "horror": "The first door creaks open",
                 }
@@ -72,30 +65,26 @@ def test_photo_payload_includes_caption_when_present(client):
     body = client.get("/api/levels/1/photos").json()
     by_id = {img["file_id"]: img for img in body["images"]}
 
-    captioned = by_id[fake.IMG_1A]
+    captioned = by_id[fake.PID_1A]
     assert captioned["caption"] == {
         "sea": "Sunlit cove of Island 1",
         "horror": "The first door creaks open",
     }
-    # Core contract preserved alongside the additive key.
-    assert captioned["file_id"] == fake.IMG_1A
-    assert captioned["url"] == f"/api/levels/1/media/{fake.IMG_1A}"
+    # Core contract preserved: file_id = public_id, url = keyless CDN link.
+    assert captioned["file_id"] == fake.PID_1A
+    assert captioned["url"] == fake._cdn_url(fake.PID_1A, "jpg")
 
 
 # ===========================================================================
-# 2. Payload WITHOUT caption — additive/back-compat contract
+# 2. Payload WITHOUT caption — additive / back-compat contract
 # ===========================================================================
 def test_photo_without_caption_has_exactly_file_id_and_url(client):
-    """An image with no caption entry keeps keys EXACTLY {file_id, url}.
-
-    Same seeded map as above captions only '1.1.jpeg', so '1.2.jpeg' (IMG_1B)
-    must carry NO caption key at all (guards the additive contract).
-    """
-    _seed({"1": {"1.1.jpeg": {"sea": "x", "horror": "y"}}})
+    """An image with no caption entry keeps keys EXACTLY {file_id, url}."""
+    _seed({"1": {fake.STEM_1A: {"sea": "x", "horror": "y"}}})
     body = client.get("/api/levels/1/photos").json()
     by_id = {img["file_id"]: img for img in body["images"]}
 
-    uncaptioned = by_id[fake.IMG_1B]
+    uncaptioned = by_id[fake.PID_1B]  # stem "1.2" has no caption
     assert set(uncaptioned.keys()) == {"file_id", "url"}
     assert "caption" not in uncaptioned
 
@@ -114,30 +103,29 @@ def test_photo_payload_no_captions_at_all_is_legacy_shape(client):
 # ===========================================================================
 def test_partial_caption_only_sea_yields_empty_horror(client):
     """A caption with only 'sea' -> the payload emits horror: "" (no error)."""
-    _seed({"1": {"1.1.jpeg": {"sea": "Only the tide speaks"}}})
+    _seed({"1": {fake.STEM_1A: {"sea": "Only the tide speaks"}}})
     body = client.get("/api/levels/1/photos").json()
     by_id = {img["file_id"]: img for img in body["images"]}
 
-    cap = by_id[fake.IMG_1A]["caption"]
+    cap = by_id[fake.PID_1A]["caption"]
     assert cap == {"sea": "Only the tide speaks", "horror": ""}
 
 
 def test_partial_caption_only_horror_yields_empty_sea(client):
     """Symmetric: only 'horror' -> sea is "" and both keys are always present."""
-    _seed({"1": {"1.1.jpeg": {"horror": "Something watches"}}})
+    _seed({"1": {fake.STEM_1A: {"horror": "Something watches"}}})
     body = client.get("/api/levels/1/photos").json()
     by_id = {img["file_id"]: img for img in body["images"]}
 
-    cap = by_id[fake.IMG_1A]["caption"]
+    cap = by_id[fake.PID_1A]["caption"]
     assert cap == {"sea": "", "horror": "Something watches"}
 
 
 def test_caption_dict_always_has_both_keys(client):
-    """When a caption is emitted, BOTH 'sea' and 'horror' keys exist (client
-    can toggle theme without a KeyError)."""
-    _seed({"1": {"1.1.jpeg": {"sea": "s"}}})
+    """When a caption is emitted, BOTH 'sea' and 'horror' keys exist."""
+    _seed({"1": {fake.STEM_1A: {"sea": "s"}}})
     body = client.get("/api/levels/1/photos").json()
-    cap = next(i for i in body["images"] if i["file_id"] == fake.IMG_1A)["caption"]
+    cap = next(i for i in body["images"] if i["file_id"] == fake.PID_1A)["caption"]
     assert set(cap.keys()) == {"sea", "horror"}
 
 
@@ -149,7 +137,7 @@ def test_load_missing_file_returns_empty(monkeypatch, tmp_path):
     captions._captions = None
     assert captions.load_captions() == {}
     # And a lookup against the empty map returns None, never raises.
-    assert captions.get_caption(1, "1.1.jpeg") is None
+    assert captions.get_caption(1, "1") is None
 
 
 def test_load_malformed_json_returns_empty(monkeypatch, tmp_path):
@@ -158,7 +146,7 @@ def test_load_malformed_json_returns_empty(monkeypatch, tmp_path):
     monkeypatch.setattr(captions, "CAPTIONS_PATH", bad)
     captions._captions = None
     assert captions.load_captions() == {}
-    assert captions.get_caption(1, "1.1.jpeg") is None
+    assert captions.get_caption(1, "1") is None
 
 
 def test_load_wrong_toplevel_shape_returns_empty(monkeypatch, tmp_path):
@@ -174,9 +162,9 @@ def test_load_drops_garbage_entries_keeps_valid(monkeypatch, tmp_path):
     """Normalization keeps well-formed entries and silently drops garbage."""
     src = {
         "1": {
-            "good.jpeg": {"sea": "S", "horror": "H"},
-            "bad.jpeg": "not-an-object",  # dropped
-            "nonstr.jpeg": {"sea": 123, "horror": None},  # non-str -> dropped
+            "good": {"sea": "S", "horror": "H"},
+            "bad": "not-an-object",  # dropped
+            "nonstr": {"sea": 123, "horror": None},  # non-str -> dropped
         },
         "2": "not-a-dict",  # whole level dropped
     }
@@ -185,14 +173,14 @@ def test_load_drops_garbage_entries_keeps_valid(monkeypatch, tmp_path):
     monkeypatch.setattr(captions, "CAPTIONS_PATH", f)
     captions._captions = None
     loaded = captions.load_captions()
-    assert loaded == {"1": {"good.jpeg": {"sea": "S", "horror": "H"}}}
+    assert loaded == {"1": {"good": {"sea": "S", "horror": "H"}}}
     assert "2" not in loaded
 
 
-def test_get_caption_unknown_level_and_filename_return_none():
-    _seed({"1": {"1.1.jpeg": {"sea": "s", "horror": "h"}}})
-    assert captions.get_caption(99, "1.1.jpeg") is None  # unknown level
-    assert captions.get_caption(1, "absent.jpeg") is None  # unknown filename
+def test_get_caption_unknown_level_and_stem_return_none():
+    _seed({"1": {fake.STEM_1A: {"sea": "s", "horror": "h"}}})
+    assert captions.get_caption(99, fake.STEM_1A) is None  # unknown level
+    assert captions.get_caption(1, "absent-stem") is None  # unknown stem
 
 
 # ===========================================================================
@@ -203,40 +191,40 @@ def test_refresh_reloads_captions_from_disk(client, monkeypatch, tmp_path):
     f = tmp_path / "captions.json"
     monkeypatch.setattr(captions, "CAPTIONS_PATH", f)
 
-    # v1 of the file: no caption for 1.1.jpeg.
-    f.write_text(json.dumps({"1": {"other.jpeg": {"sea": "x", "horror": "y"}}}),
+    # v1 of the file: no caption for stem "1".
+    f.write_text(json.dumps({"1": {"other": {"sea": "x", "horror": "y"}}}),
                  encoding="utf-8")
     captions._captions = None
     body = client.get("/api/levels/1/photos").json()
-    one_one = next(i for i in body["images"] if i["file_id"] == fake.IMG_1A)
-    assert "caption" not in one_one
+    one = next(i for i in body["images"] if i["file_id"] == fake.PID_1A)
+    assert "caption" not in one
 
     # Edit the file, then refresh — the new caption must now appear.
     f.write_text(
-        json.dumps({"1": {"1.1.jpeg": {"sea": "fresh sea", "horror": "fresh horror"}}}),
+        json.dumps({"1": {fake.STEM_1A: {"sea": "fresh sea", "horror": "fresh horror"}}}),
         encoding="utf-8",
     )
     assert client.post("/api/refresh").status_code == 200
     body2 = client.get("/api/levels/1/photos").json()
-    one_one2 = next(i for i in body2["images"] if i["file_id"] == fake.IMG_1A)
-    assert one_one2["caption"] == {"sea": "fresh sea", "horror": "fresh horror"}
+    one2 = next(i for i in body2["images"] if i["file_id"] == fake.PID_1A)
+    assert one2["caption"] == {"sea": "fresh sea", "horror": "fresh horror"}
 
 
 def test_reload_captions_replaces_cache(monkeypatch, tmp_path):
     """reload_captions() re-reads disk and replaces the in-memory cache."""
     f = tmp_path / "captions.json"
     monkeypatch.setattr(captions, "CAPTIONS_PATH", f)
-    f.write_text(json.dumps({"1": {"a.jpeg": {"sea": "1", "horror": "1"}}}),
+    f.write_text(json.dumps({"1": {"a": {"sea": "1", "horror": "1"}}}),
                  encoding="utf-8")
     captions._captions = None
-    assert captions.load_captions() == {"1": {"a.jpeg": {"sea": "1", "horror": "1"}}}
+    assert captions.load_captions() == {"1": {"a": {"sea": "1", "horror": "1"}}}
 
-    f.write_text(json.dumps({"2": {"b.jpeg": {"sea": "2", "horror": "2"}}}),
+    f.write_text(json.dumps({"2": {"b": {"sea": "2", "horror": "2"}}}),
                  encoding="utf-8")
     # Without reload the cache is stale...
     assert "2" not in captions.load_captions()
     # ...reload picks up the change.
-    assert captions.reload_captions() == {"2": {"b.jpeg": {"sea": "2", "horror": "2"}}}
+    assert captions.reload_captions() == {"2": {"b": {"sea": "2", "horror": "2"}}}
 
 
 # ===========================================================================
@@ -256,12 +244,47 @@ def test_level_page_links_versioned_stylesheet(client):
 
 
 # ===========================================================================
-# 7. Caption keyed by filename, not file_id (CapQ1 regression guard)
+# 7. Caption keyed by STEM, not public_id (CapQ1 regression guard)
 # ===========================================================================
-def test_caption_lookup_uses_filename_not_file_id(client):
-    """Seeding by the Drive FILE ID (wrong key) must NOT produce a caption;
-    only the PhotoRef.name (filename) is the lookup key."""
-    _seed({"1": {fake.IMG_1A: {"sea": "wrong-key", "horror": "wrong-key"}}})
+def test_caption_lookup_uses_stem_not_public_id(client):
+    """Seeding by the Cloudinary public_id (wrong key) must NOT produce a
+    caption; only the derived filename stem is the lookup key."""
+    _seed({"1": {fake.PID_1A: {"sea": "wrong-key", "horror": "wrong-key"}}})
     body = client.get("/api/levels/1/photos").json()
-    captioned = next(i for i in body["images"] if i["file_id"] == fake.IMG_1A)
+    captioned = next(i for i in body["images"] if i["file_id"] == fake.PID_1A)
     assert "caption" not in captioned
+
+
+def test_caption_attaches_for_dotted_stem(client):
+    """A dotted stem like "2.1" (public_id 2.1_zzzzaa) attaches correctly."""
+    _seed({"2": {fake.STEM_2A: {"sea": "island two", "horror": "room two"}}})
+    body = client.get("/api/levels/2/photos").json()
+    img = next(i for i in body["images"] if i["file_id"] == fake.PID_2A)
+    assert img["caption"] == {"sea": "island two", "horror": "room two"}
+
+
+# ===========================================================================
+# 8. Real committed captions.json is stem-keyed (M13 re-key sanity)
+# ===========================================================================
+def test_committed_captions_json_is_stem_keyed():
+    """The shipped app/captions.json keys files by stem (e.g. "1", "2.1"),
+    NOT by a Cloudinary public_id (no random "_xxxxxx" suffix) and NOT by a
+    legacy ".jpeg" filename. This guards the M13 re-key from regressing."""
+    import re as _re
+
+    captions._captions = None
+    monkey_path = captions.CAPTIONS_PATH
+    if not monkey_path.is_file():
+        pytest.skip("app/captions.json not present in this checkout")
+    loaded = captions.load_captions()
+    assert loaded, "captions.json loaded empty (expected real content)"
+    suffix_re = _re.compile(r"_[A-Za-z0-9]{6}$")
+    for level_key, files in loaded.items():
+        for stem in files:
+            assert not stem.endswith(".jpeg") and not stem.endswith(".jpg"), (
+                f"caption key {stem!r} looks like a legacy filename, not a stem"
+            )
+            assert not suffix_re.search(stem), (
+                f"caption key {stem!r} carries a Cloudinary random suffix; "
+                "captions must key on the stripped stem"
+            )

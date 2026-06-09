@@ -2,13 +2,13 @@
 
 Verifies the frontend-only Sea-theme arm of templates/index.html: the old island
 GRID is replaced by a full-bleed illustrated archipelago map with 19 %-positioned
-clickable hotspots -> /level/{id}. Drive stays mocked via tests/conftest.py
-(patched_drive) — the suite is hermetic, offline, and passes against placeholder
-assets.
+clickable hotspots -> /level/{id}. The Cloudinary Admin API stays mocked via
+tests/conftest.py (M13) — the suite is hermetic, offline, and passes against
+placeholder assets.
 
-The mocked Drive tree (tests/conftest.py) yields discovered/available levels
-{1, 2, 8}; every other id in 0..18 is therefore UNAVAILABLE -> rendered .is-sealed
-with a "(sunken — fallback content)" aria-label suffix.
+The mocked Cloudinary resource set (tests/conftest.py) yields discovered/available
+levels {1, 2, 8}; every other id in 0..18 is therefore UNAVAILABLE -> rendered
+.is-sealed with a "(sunken — fallback content)" aria-label suffix.
 
 Required coverage:
   1. SSR Sea map from cookie; OLD Sea grid markup is gone.

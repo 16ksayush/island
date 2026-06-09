@@ -1,230 +1,162 @@
-"""Shared fixtures for the Archive 19 backend test suite (T6b).
+"""Shared fixtures for the Archive 19 backend test suite (M13 — Cloudinary).
 
-All Google Drive access is mocked — the suite is hermetic and offline:
+M13 migration: the image source is now Cloudinary's keyless public CDN, not the
+Google-Drive byte proxy. The single network funnel is the Cloudinary Admin API
+list (``cloudinary_service._list_all_resources``); discovery groups its result
+by ``asset_folder`` into the cache. This conftest mocks THAT one call so the
+whole suite is hermetic and offline — no httpx request ever leaves the process.
 
-- ``drive_service.list_children`` is the single network funnel used by
-  discovery, the ``missing/`` fallback, and the in-scope guard. We patch it to
-  serve a fake Drive tree keyed by folder id, so no real ``httpx`` request is
-  made for those paths.
-- ``resolve_media`` builds its own ``httpx.AsyncClient`` to stream bytes; we
-  patch the module's ``httpx.AsyncClient`` to one backed by an
-  ``httpx.MockTransport`` so the streaming byte fetch is also offline.
+What was RETIRED here vs the M12 Drive conftest (and why):
+  * ``patched_drive`` / ``list_children`` fake tree — Drive discovery is gone;
+    replaced by ``CLOUD_RESOURCES`` + a patched ``_list_all_resources``.
+  * ``patched_media`` + ``MockTransport`` byte handler / ``MEDIA_BYTES`` — the
+    ``/api/levels/{id}/media/{file_id}`` proxy, ``resolve_media`` and the byte
+    LRU were REMOVED (M13); images stream straight from ``res.cloudinary.com``,
+    so there is no server-side byte fetch to mock.
+  * ``isolate_bake`` manifest/baked-image redirect — the ``scripts/fetch_images``
+    bake + ``static/img/levels/manifest.json`` loader are gone; Cloudinary is the
+    sole source. The hermetic guard is now ``isolate_cloudinary`` below.
 
-``GD_API_KEY`` / ``GD_ROOT_FOLDER`` are set to dummy values for the session so
-config reads succeed without ever contacting Google.
+The mocked resource set yields available levels {1, 2, 8} with a dynamic span of
+0..8 and a populated ``missing`` pool — the same available/span shape the older
+Drive fake produced, so the still-valid frontend/SSR/caption tests keep their
+expectations.
 """
 
 from __future__ import annotations
 
-import importlib
-
-import httpx
-import pytest
-
-# Dummy config BEFORE importing the app, so module import + lifespan never try
-# to read a real key. These are placeholders; no network ever happens.
 import os
 
-os.environ.setdefault("GD_API_KEY", "TEST-DUMMY-KEY-do-not-use")
-os.environ.setdefault("GD_ROOT_FOLDER", "ROOT_FOLDER_ID")
+import pytest
 
-from app import drive_service  # noqa: E402
+# Dummy Cloudinary creds BEFORE importing the app, so module import + lifespan
+# never try to read a real CLOUDINARY_URL. The secret is a placeholder; the
+# patched ``_list_all_resources`` means no real api.cloudinary.com call happens.
+os.environ.setdefault("CLOUDINARY_URL", "cloudinary://TESTKEY:TESTSECRET@testcloud")
+
+from app import cloudinary_service  # noqa: E402
 from app import main as main_module  # noqa: E402
 
-
-# --- Fake Drive tree -------------------------------------------------------
-# A realistic confirmed structure (ARCHITECTURE §5.1 / REQUIREMENTS §7):
-#   present numbered folders: 1, 2, 8  (subset; enough to prove dynamic span)
-#   a "missing/" folder holding stock images + audio
-FOLDER_MIME = drive_service.FOLDER_MIME
-
-ROOT_ID = "ROOT_FOLDER_ID"
-
-# Drive ids for the child folders under root.
-FOLDER_1 = "drv_folder_1"
-FOLDER_2 = "drv_folder_2"
-FOLDER_8 = "drv_folder_8"
-MISSING_ID = "drv_missing"
-
-# Image ids inside present level folders.
-IMG_1A = "img_1a"
-IMG_1B = "img_1b"
-IMG_2A = "img_2a"
-# Folder 8 is present but EMPTY (R5: empty-but-present -> missing fallback).
-
-# Stock assets inside the missing/ folder.
-MISS_IMG_A = "miss_img_a"
-MISS_IMG_B = "miss_img_b"
-MISS_AUD_A = "miss_aud_a"
-MISS_AUD_B = "miss_aud_b"
+# The placeholder secret that must NEVER appear in any client-facing payload.
+DUMMY_SECRET = "TESTSECRET"
+DUMMY_KEY = "TESTKEY"
+DUMMY_CLOUD = "testcloud"
+DUMMY_CLOUDINARY_URL = f"cloudinary://{DUMMY_KEY}:{DUMMY_SECRET}@{DUMMY_CLOUD}"
 
 
-def _default_tree() -> dict[str, list[dict]]:
-    """Return a fresh copy of the fake Drive tree (folder_id -> children)."""
-    return {
-        ROOT_ID: [
-            {"id": FOLDER_1, "name": "1", "mimeType": FOLDER_MIME},
-            {"id": FOLDER_2, "name": "2", "mimeType": FOLDER_MIME},
-            {"id": FOLDER_8, "name": "8", "mimeType": FOLDER_MIME},
-            {"id": MISSING_ID, "name": "missing", "mimeType": FOLDER_MIME},
-            # A non-numeric, non-folder sibling that must be ignored.
-            {"id": "readme", "name": "README", "mimeType": "text/plain"},
-        ],
-        FOLDER_1: [
-            {"id": IMG_1A, "name": "1.1.jpeg", "mimeType": "image/jpeg"},
-            {"id": IMG_1B, "name": "1.2.jpeg", "mimeType": "image/jpeg"},
-        ],
-        FOLDER_2: [
-            {"id": IMG_2A, "name": "2.1.jpeg", "mimeType": "image/jpeg"},
-        ],
-        FOLDER_8: [],  # present but empty
-        MISSING_ID: [
-            {"id": MISS_IMG_A, "name": "stock_a.png", "mimeType": "image/png"},
-            {"id": MISS_IMG_B, "name": "stock_b.jpg", "mimeType": "image/jpeg"},
-            {"id": MISS_AUD_A, "name": "stock_a.mp3", "mimeType": "audio/mpeg"},
-            {"id": MISS_AUD_B, "name": "stock_b.mp3", "mimeType": "audio/mpeg"},
-        ],
-    }
+# --- Fake Cloudinary Admin-API resource set --------------------------------
+# Mirrors the live ``GET resources/image`` payload shape: each item carries a
+# ``public_id`` (Cloudinary's "{stem}_{6char}" form), a ``format``, and an
+# ``asset_folder`` ("all ages/{N}" -> level N; "all ages/missing" -> fallback).
+#
+# Present numbered folders: 1 (2 imgs), 2 (1 img), 8 (1 img) -> available {1,2,8}
+# Dynamic span -> 0..8.  A "missing" pool with 2 images.  Plus two noise
+# resources (root upload + a non-"all ages" folder) that discovery must ignore.
+
+# public_ids (stable identifiers used by tests).
+PID_1A = "1_uuasv3"        # level 1, stem "1"
+PID_1B = "1.2_abc123"      # level 1, stem "1.2"
+PID_2A = "2.1_zzzzaa"      # level 2, stem "2.1"
+PID_8A = "8.1_qw12er"      # level 8, stem "8.1"
+MISS_A = "stock1_aaaaaa"   # missing pool, stem "stock1"
+MISS_B = "stock2_bbbbbb"   # missing pool, stem "stock2"
+
+# Derived stems (what captions key on after the M13 re-key).
+STEM_1A = "1"
+STEM_1B = "1.2"
+STEM_2A = "2.1"
+STEM_8A = "8.1"
+
+
+def _default_resources() -> list[dict]:
+    """Return a fresh copy of the fake Admin-API resource list."""
+    return [
+        {"public_id": PID_1A, "format": "jpg", "asset_folder": "all ages/1"},
+        {"public_id": PID_1B, "format": "jpg", "asset_folder": "all ages/1"},
+        {"public_id": PID_2A, "format": "png", "asset_folder": "all ages/2"},
+        {"public_id": PID_8A, "format": "jpg", "asset_folder": "all ages/8"},
+        {"public_id": MISS_A, "format": "jpg", "asset_folder": "all ages/missing"},
+        {"public_id": MISS_B, "format": "png", "asset_folder": "all ages/missing"},
+        # Noise that must be ignored by _build_cache:
+        {"public_id": "root_upload_xxxxxx", "format": "jpg", "asset_folder": ""},
+        {"public_id": "other_yyyyyy", "format": "jpg", "asset_folder": "misc/stuff"},
+    ]
+
+
+def _cdn_url(public_id: str, fmt: str) -> str:
+    """The expected keyless CDN delivery URL for an asset under the dummy cloud."""
+    return (
+        f"https://res.cloudinary.com/{DUMMY_CLOUD}/image/upload/"
+        f"f_auto,q_auto/{public_id}.{fmt}"
+    )
 
 
 @pytest.fixture
-def drive_tree():
-    """Mutable fake Drive tree the test can edit (e.g. for /api/refresh)."""
-    return _default_tree()
+def cloud_resources():
+    """Mutable fake resource list the test can edit (e.g. for /api/refresh)."""
+    return _default_resources()
 
 
 @pytest.fixture(autouse=True)
 def reset_cache():
     """Reset the module-level discovery cache before & after each test."""
-    drive_service._cache = drive_service.DiscoveryCache()
+    cloudinary_service._cache = cloudinary_service.DiscoveryCache()
     yield
-    drive_service._cache = drive_service.DiscoveryCache()
+    cloudinary_service._cache = cloudinary_service.DiscoveryCache()
 
 
 @pytest.fixture(autouse=True)
-def isolate_bake(monkeypatch, tmp_path):
-    """Make the whole suite hermetic w.r.t. a real on-disk bake (test isolation).
+def isolate_cloudinary(monkeypatch):
+    """Make the whole suite hermetic w.r.t. the real Cloudinary Admin API.
 
-    The documented local flow (``python scripts/fetch_images.py``) WRITES
-    ``static/img/levels/manifest.json`` + baked image files. If that exists, the
-    lifespan's ``load_discovery`` would load it as PRIMARY and silently override
-    the mocked Drive tree every test relies on (this is what false-greened QA).
+    Forces dummy ``CLOUDINARY_URL`` for EVERY test regardless of the ambient
+    environment / a local ``.env`` (so a real cloud is never contacted), and
+    keeps ``IMAGE_SYNC_INTERVAL_SECONDS`` empty so the background re-list loop is
+    never scheduled (the lifespan gate needs interval>0 AND creds). Tests that
+    need NO creds (graceful-degrade cases) delete the var themselves.
 
-    Point the manifest path and baked-image dir (both in ``drive_service`` and
-    the ``main`` module's ``LEVELS_IMG_DIR`` used by ``_ref``) at a NONEXISTENT
-    tmp path for EVERY test. ``load_manifest`` now resolves ``MANIFEST_PATH`` at
-    call time, so this redirect is honoured: no test ever reads a real manifest
-    or a real baked file, regardless of any local bake on disk.
-
-    Also installs a network-refusing default for ``list_children`` so that even
-    a test which forgets to patch Drive (or the lifespan discovery path when
-    creds happen to be present) can NEVER reach live Drive. Tests that need a
-    working Drive (``patched_drive``) or a custom guard re-patch it afterwards;
-    monkeypatch layering lets their patch win.
+    Also installs a network-refusing default for ``_list_all_resources`` so a
+    test that forgets to patch the resource list can NEVER reach api.cloudinary.
+    The ``cloud_client`` fixture re-patches it with the fake resources; pytest's
+    monkeypatch layering lets that win.
     """
-    # Force dummy creds for EVERY test, regardless of the ambient environment.
-    # This makes the suite hermetic in all three states:
-    #   - State A (GD_* explicitly empty in CI) -> the mocked discovery path runs
-    #     instead of being skipped for "no config".
-    #   - real .env present -> the test process can NEVER use real creds to reach
-    #     live Drive (the live-Drive leak), since the patched list_children below
-    #     is the only network funnel and these creds are placeholders.
-    # IMAGE_SYNC_INTERVAL_SECONDS is forced empty so the background sync stays
-    # disabled in tests no matter what the ambient env / .env sets.
-    monkeypatch.setenv("GD_API_KEY", "TEST-DUMMY-KEY-do-not-use")
-    monkeypatch.setenv("GD_ROOT_FOLDER", "ROOT_FOLDER_ID")
+    monkeypatch.setenv("CLOUDINARY_URL", DUMMY_CLOUDINARY_URL)
     monkeypatch.setenv("IMAGE_SYNC_INTERVAL_SECONDS", "")
 
-    nonexistent_levels = tmp_path / "no-bake" / "levels"
-    nonexistent_manifest = nonexistent_levels / "manifest.json"
-    monkeypatch.setattr(drive_service, "LEVELS_IMG_DIR", nonexistent_levels)
-    monkeypatch.setattr(drive_service, "MANIFEST_PATH", nonexistent_manifest)
-    monkeypatch.setattr(main_module, "LEVELS_IMG_DIR", nonexistent_levels)
-
-    async def _no_network(folder_id, client):  # pragma: no cover - safety net
+    async def _no_network(cfg, client):  # pragma: no cover - safety net
         raise AssertionError(
-            "Drive list_children reached live network in a test; a fixture must "
-            "patch it (the suite is hermetic)."
+            "cloudinary_service._list_all_resources reached live network in a "
+            "test; a fixture must patch it (the suite is hermetic)."
         )
 
-    monkeypatch.setattr(drive_service, "list_children", _no_network)
+    monkeypatch.setattr(cloudinary_service, "_list_all_resources", _no_network)
     yield
 
 
 @pytest.fixture
-def patched_drive(monkeypatch, drive_tree):
-    """Patch ``list_children`` to serve ``drive_tree`` (no real network).
+def patched_cloudinary(monkeypatch, cloud_resources):
+    """Patch ``_list_all_resources`` to serve ``cloud_resources`` (no network).
 
-    Returns the tree dict so tests can mutate it (folder add/remove) and then
-    call ``POST /api/refresh`` to observe re-discovery.
+    Returns the resource list so tests can mutate it (add/remove resources) and
+    then ``POST /api/refresh`` to observe re-discovery. The Admin secret in the
+    dummy ``CLOUDINARY_URL`` is the only auth; no real request is ever made.
     """
 
-    async def fake_list_children(folder_id, client):
-        # Mirror the real signature; ignore the (unused-here) client object.
-        if folder_id not in drive_tree:
-            # An unknown folder behaves like an empty folder (no children).
-            return []
-        return list(drive_tree[folder_id])
+    async def fake_list(cfg, client):
+        # Mirror the real signature; ignore cfg/client. Return a copy so a test's
+        # later mutation of cloud_resources only takes effect on the next call.
+        return list(cloud_resources)
 
-    monkeypatch.setattr(drive_service, "list_children", fake_list_children)
-    return drive_tree
-
-
-# --- Media-byte mock (for resolve_media's own httpx client) ----------------
-# Maps Drive file id -> (content_type, body_bytes) for the streaming proxy.
-MEDIA_BYTES: dict[str, tuple[str, bytes]] = {
-    IMG_1A: ("image/jpeg", b"\xff\xd8\xff\xe0JPEGDATA"),
-    IMG_1B: ("image/jpeg", b"\xff\xd8\xff\xe0JPEGDATA2"),
-    IMG_2A: ("image/jpeg", b"\xff\xd8\xff\xe0JPEGDATA3"),
-    MISS_IMG_A: ("image/png", b"\x89PNG\r\n\x1a\nPNGDATA"),
-    MISS_IMG_B: ("image/jpeg", b"\xff\xd8\xff\xe0MISSJPEG"),
-    MISS_AUD_A: ("audio/mpeg", b"ID3MP3DATA_A"),
-    MISS_AUD_B: ("audio/mpeg", b"ID3MP3DATA_B"),
-}
-
-
-def _media_handler(request: httpx.Request) -> httpx.Response:
-    """MockTransport handler emulating Drive files.get?alt=media."""
-    # URL form: https://www.googleapis.com/drive/v3/files/{file_id}
-    file_id = request.url.path.rsplit("/", 1)[-1]
-    if file_id in MEDIA_BYTES:
-        content_type, body = MEDIA_BYTES[file_id]
-        return httpx.Response(200, headers={"content-type": content_type}, content=body)
-    # Upstream "not found" — exercises the 502 path in resolve_media.
-    return httpx.Response(404, content=b"not found")
+    monkeypatch.setattr(cloudinary_service, "_list_all_resources", fake_list)
+    return cloud_resources
 
 
 @pytest.fixture
-def patched_media(monkeypatch):
-    """Back ``resolve_media``'s httpx client with a MockTransport (no network).
-
-    Returns a holder whose ``.last_request`` captures the outgoing Drive
-    request so a test can assert the key is sent upstream but never returned to
-    the client.
-    """
-    captured: dict[str, object] = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured["last_request"] = request
-        return _media_handler(request)
-
-    transport = httpx.MockTransport(handler)
-    real_async_client = httpx.AsyncClient
-
-    def client_factory(*args, **kwargs):
-        kwargs.pop("transport", None)
-        return real_async_client(transport=transport, **kwargs)
-
-    monkeypatch.setattr(drive_service.httpx, "AsyncClient", client_factory)
-    return captured
-
-
-@pytest.fixture
-def client(patched_drive):
-    """A TestClient with discovery pre-built from the fake tree.
+def client(patched_cloudinary):
+    """A TestClient with discovery pre-built from the fake resource list.
 
     Using the context manager triggers the lifespan handler, which calls
-    ``discover_levels(force=True)`` against the patched ``list_children``.
+    ``discover(force=True)`` against the patched ``_list_all_resources``.
     """
     from fastapi.testclient import TestClient
 

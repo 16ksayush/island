@@ -1,20 +1,21 @@
 """FastAPI application for Archive 19 — Dual-Atmosphere Dynamic Gallery.
 
-Implements docs/ARCHITECTURE.md §3 / §4 / §4.1:
+Implements docs/ARCHITECTURE.md §3 / §4 / §4.1, updated for M13 (Cloudinary):
 
 - SSR routes ``/`` (index.html) and ``/level/{id}`` (level.html), each reading
   the ``theme`` cookie (default ``horror`` — D3) and passing it to Jinja2.
-- JSON API: ``/api/levels`` (id + availability), ``/api/levels/{id}/photos``
-  (proxied image refs + fallback audio), and ``/api/refresh`` (rebuild the
-  discovery cache — R2).
-- Media proxy ``/api/levels/{id}/media/{file_id}`` returns Drive bytes (served
-  from an in-memory LRU byte cache when warm) echoing the upstream Content-Type
-  (R6) AFTER validating the file id is in scope for the level (R1), with
-  browser-cache headers (immutable + ETag) since file ids are immutable.
+- JSON API: ``/api/levels`` (id + availability) and ``/api/levels/{id}/photos``
+  (image refs + null fallback audio), plus ``/api/refresh`` (re-list Cloudinary
+  + reload captions — R2).
 
-Security: the Drive API key never reaches the client — only ``file_id`` values
-and proxied media URLs do. The app imports and starts even when GD_API_KEY /
-GD_ROOT_FOLDER are unset or Drive is unreachable (discovery degrades to empty).
+M13 image source: images live in Cloudinary and are served straight from its
+**keyless public CDN** (``https://res.cloudinary.com/...``). The server uses the
+Cloudinary Admin API ONCE (metadata) to discover what exists; each photo's
+``url`` is an absolute CDN link, so there is NO per-request proxy and NO byte
+download. The Cloudinary ``api_secret`` never reaches the client — only the
+public ``public_id`` and keyless CDN URLs do. Per-level audio remains LOCAL
+static files (``static/audio/{theme}/``, §11). The app imports + starts even
+when ``CLOUDINARY_URL`` is unset (discovery degrades to an empty gallery).
 """
 
 from __future__ import annotations
@@ -25,13 +26,12 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import captions, drive_service
-from app.drive_service import DriveError
+from app import captions, cloudinary_service
 
 logger = logging.getLogger("archive19.main")
 
@@ -41,11 +41,11 @@ STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
 
 # --- Local .env auto-load (convenience for local dev only) -----------------
-# Loads GD_API_KEY / GD_ROOT_FOLDER from a repo-root .env so `uvicorn app.main:app`
-# works without a manual `export`. override=False means real environment vars
-# (Render dashboard, CI dummies, an exported shell var) always take precedence,
-# and a missing .env (e.g. in CI/prod) is a silent no-op. python-dotenv is
-# optional — the app still runs on real env vars if it isn't installed.
+# Loads CLOUDINARY_URL (and IMAGE_SYNC_INTERVAL_SECONDS) from a repo-root .env so
+# `uvicorn app.main:app` works without a manual `export`. override=False means
+# real environment vars (Render dashboard, CI dummies, an exported shell var)
+# always take precedence, and a missing .env (CI/prod) is a silent no-op.
+# python-dotenv is optional — the app still runs on real env vars if absent.
 try:
     from dotenv import load_dotenv
 
@@ -56,17 +56,13 @@ except ImportError:
 DEFAULT_THEME = "horror"  # D3
 VALID_THEMES = {"horror", "sea"}
 
-# Baked level-image dir (M12 §12.3). The static `url` is emitted only when the
-# baked file is present here; otherwise `_ref` falls back to the proxy URL.
-LEVELS_IMG_DIR = STATIC_DIR / "img" / "levels"
-
 
 def _image_sync_interval() -> int:
-    """Read ``IMAGE_SYNC_INTERVAL_SECONDS`` (§12.13). 0/unset/invalid -> 0.
+    """Read ``IMAGE_SYNC_INTERVAL_SECONDS``. 0/unset/invalid -> 0 (disabled).
 
-    A return of 0 means the periodic background sync is DISABLED — the task is
-    never created, so local dev, CI, and the pytest suite never poll Drive
-    (hermetic — R-Bake8). Render sets a positive value (e.g. 1800) to enable it.
+    A return of 0 means the periodic background re-list is DISABLED — the task is
+    never created, so local dev, CI, and the pytest suite never poll Cloudinary
+    (hermetic). Render sets a positive value (e.g. 1800) to enable it.
     """
     raw = os.environ.get("IMAGE_SYNC_INTERVAL_SECONDS", "")
     try:
@@ -78,47 +74,36 @@ def _image_sync_interval() -> int:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Build the discovery cache once at startup (R2 / §12.4).
+    """Discover Cloudinary once at startup + start the gated background re-list.
 
-    Discovery source order (§12.4): build-written ``manifest.json`` is PRIMARY
-    (zero Drive calls at cold start, no runtime creds needed); if absent or
-    malformed, fall back to live Drive **metadata** discovery; if that also
-    fails, the empty gallery (exactly as today). Never crash on a failed
-    discovery — the app must still serve pages so local runs and tests work
-    without live Drive access.
+    Discovery is one Admin API list (metadata only); a missing/invalid
+    ``CLOUDINARY_URL`` or any API error degrades to an empty gallery and never
+    crashes startup. Captions are loaded once here too.
 
-    When ``IMAGE_SYNC_INTERVAL_SECONDS > 0`` AND Drive creds are present, a
-    single ``asyncio`` background sync task is started (§12.13) and cancelled
-    cleanly on shutdown. With 0/unset/invalid OR no creds the task is NEVER
-    created (hermetic local/CI/tests — R-Bake8).
+    When ``IMAGE_SYNC_INTERVAL_SECONDS > 0`` AND ``CLOUDINARY_URL`` is set, a
+    single ``asyncio`` background re-list task is started and cancelled cleanly
+    on shutdown. With 0/unset/invalid OR no creds the task is NEVER created
+    (hermetic local/CI/tests).
     """
     try:
-        if not drive_service.load_discovery(force=True):
-            # No usable manifest -> live Drive metadata discovery (fallback).
-            await drive_service.discover_levels(force=True)
+        await cloudinary_service.discover(force=True)
     except Exception as exc:  # defensive: discovery must never block startup
         logger.warning("Startup discovery did not complete: %s", type(exc).__name__)
-    # Load image captions once (§11.2). The loader is tolerant — a missing or
-    # malformed app/captions.json degrades to an empty map and never raises.
+    # Load image captions once (§11.2). Tolerant — a missing/malformed
+    # app/captions.json degrades to an empty map and never raises.
     captions.load_captions()
 
-    # §12.13: start the periodic background sync ONLY when explicitly enabled
-    # AND creds exist. This gate is what keeps the test suite + local runs
-    # hermetic — with the env unset/0 the task is never scheduled and Drive is
-    # never polled.
     sync_task: asyncio.Task | None = None
     interval = _image_sync_interval()
-    creds_present = bool(os.environ.get("GD_API_KEY")) and bool(
-        os.environ.get("GD_ROOT_FOLDER")
-    )
+    creds_present = bool(os.environ.get("CLOUDINARY_URL"))
     if interval > 0 and creds_present:
-        logger.info("Background image sync ENABLED: every %ds.", interval)
+        logger.info("Background image re-list ENABLED: every %ds.", interval)
         sync_task = asyncio.create_task(
-            drive_service.background_sync_loop(interval)
+            cloudinary_service.background_sync_loop(interval)
         )
     else:
         logger.info(
-            "Background image sync DISABLED (interval=%d, creds=%s).",
+            "Background image re-list DISABLED (interval=%d, creds=%s).",
             interval,
             creds_present,
         )
@@ -154,7 +139,7 @@ def read_theme(request: Request) -> str:
 
 def _levels_payload() -> list[dict]:
     """Build the ``levels`` list (id + availability) from the cache."""
-    cache = drive_service.get_cache()
+    cache = cloudinary_service.get_cache()
     return [
         {"id": level_id, "available": level_id in cache.folder_index}
         for level_id in cache.levels
@@ -196,7 +181,7 @@ def index(request: Request):
 def level_page(request: Request, level_id: int):
     """Dedicated per-level page (room/beach by theme)."""
     theme = read_theme(request)
-    cache = drive_service.get_cache()
+    cache = cloudinary_service.get_cache()
     available = level_id in cache.folder_index
     return templates.TemplateResponse(
         request,
@@ -218,44 +203,33 @@ def list_levels():
 
 
 @app.get("/api/levels/{level_id}/photos")
-async def level_photos(level_id: int):
-    """Return proxied image refs for a level (+ fallback audio when missing).
+def level_photos(level_id: int):
+    """Return Cloudinary image refs for a level (+ null fallback audio).
 
-    Unknown level id (outside the discovered span) -> 404. Upstream Drive
-    failure -> 502. Image elements are objects (``file_id`` + proxied ``url``),
-    never bare Drive URLs (key isolation).
+    Unknown level id (outside the discovered span) -> 404. Each image element is
+    an object with ``file_id`` (the Cloudinary ``public_id``) and a direct
+    keyless CDN ``url`` (absolute ``https://res.cloudinary.com/...``). A missing
+    level re-rolls a random image from the ``missing/`` pool per request (R3);
+    ``fallback_audio`` is always ``null`` (audio is local per-theme — §11).
     """
-    cache = drive_service.get_cache()
+    cache = cloudinary_service.get_cache()
     if level_id not in cache.levels:
         return JSONResponse({"detail": "Unknown level."}, status_code=404)
 
-    try:
-        result = await drive_service.get_level_photos(level_id)
-    except DriveError:
-        return JSONResponse({"detail": "Upstream Drive error."}, status_code=502)
-
-    # A missing-level (available: false) image is baked under .../levels/missing/,
-    # an available level's images under .../levels/{id}/ (§12.3).
-    disk_subdir = str(level_id) if result.available else drive_service.MISSING_DIR_NAME
+    result = cloudinary_service.get_level_photos(level_id)
 
     def _ref(photo) -> dict:
-        # §12.3/§12.5/§12.8: emit the static URL iff the baked file exists on
-        # disk; otherwise fall back to the guarded media proxy (un-baked / local
-        # dev / not-yet-synced id). file_id + name + caption are unchanged.
-        baked = LEVELS_IMG_DIR / disk_subdir / photo.name
-        if drive_service.is_safe_name(photo.name) and baked.is_file():
-            url = f"/static/img/levels/{disk_subdir}/{photo.name}"
-        else:
-            url = f"/api/levels/{level_id}/media/{photo.file_id}"
+        # The url is the absolute keyless Cloudinary CDN link built at discovery
+        # time (f_auto,q_auto for auto-format/quality). file_id = public_id.
         ref = {
             "file_id": photo.file_id,
-            "url": url,
+            "url": photo.url,
         }
-        # Optional, additive caption keyed by (level, filename) — §11.3. Absent
-        # captions OMIT the key entirely (payload identical to today). A partial
-        # entry (only one theme present) emits "" for the missing theme so the
-        # client can still toggle without a missing-key error.
-        cap = captions.get_caption(level_id, photo.name)
+        # Optional, additive caption keyed by (level, filename_stem) — §11.3.
+        # Cloudinary's public_id carries a random suffix, so we key captions on
+        # the stable stem (e.g. "2.1") the service derived. Absent captions OMIT
+        # the key entirely; a partial entry emits "" for the missing theme.
+        cap = captions.get_caption(level_id, photo.filename_stem)
         if cap:
             ref["caption"] = {
                 "sea": cap.get("sea", ""),
@@ -263,87 +237,27 @@ async def level_photos(level_id: int):
             }
         return ref
 
-    payload = {
+    return {
         "level": result.level,
         "available": result.available,
         "images": [_ref(p) for p in result.images],
-        "fallback_audio": _ref(result.fallback_audio)
-        if result.fallback_audio
-        else None,
+        "fallback_audio": None,
     }
-    return payload
-
-
-@app.get("/api/levels/{level_id}/media/{file_id}")
-async def media_proxy(level_id: int, file_id: str):
-    """Return a single Drive file's bytes, scoped to ``level_id`` (R1/R6).
-
-    The file id MUST belong to the level's folder or ``missing/`` (validated in
-    ``resolve_media`` against the cached scope set) — otherwise 404, no open
-    proxy. Bytes are served from the in-memory media cache when warm, else
-    fetched once from Drive and cached. The response Content-Type mirrors the
-    upstream Drive value (R6: image/* vs audio/mpeg, never hardcoded).
-
-    Drive file ids are immutable, so the response is marked cacheable for a day
-    (``Cache-Control: public, max-age=86400, immutable``) with the ``file_id``
-    as a strong ``ETag`` to let browsers revalidate cheaply.
-    """
-    try:
-        result = await drive_service.resolve_media(level_id, file_id)
-    except DriveError:
-        return JSONResponse({"detail": "Upstream Drive error."}, status_code=502)
-
-    if result is None:
-        return JSONResponse({"detail": "Media not found."}, status_code=404)
-
-    content_type, body = result
-    headers = {
-        "Cache-Control": "public, max-age=86400, immutable",
-        "ETag": f'"{file_id}"',
-    }
-    return Response(content=body, media_type=content_type, headers=headers)
 
 
 @app.post("/api/refresh")
 async def refresh():
-    """Manually refresh discovery + captions, and force an immediate sync (§12.13.5).
+    """Re-list Cloudinary + reload captions so edits take effect without redeploy.
 
-    Under the M12 manifest model (§12.4) refresh first **re-reads the manifest**
-    (PRIMARY) — falling back to live Drive metadata discovery when no manifest
-    is present — and **re-reads captions** so an edit takes effect without a
-    redeploy (§11.2). When the background sync is enabled AND creds are present,
-    it ALSO triggers an **immediate** sync via the SAME single-flight code path
-    (§12.13.5) so an operator can pull new images on demand instead of waiting
-    for the next tick. With sync disabled (e.g. tests/CI) it is a no-op refresh,
-    exactly as before — no Drive download, no new behavior on the test path.
+    Re-runs the Cloudinary Admin discovery (metadata only — no byte download)
+    and re-reads ``app/captions.json``. Both are cheap and safe to call on
+    demand. Returns a small status dict (no secrets).
     """
-    if not drive_service.load_discovery(force=True):
-        # No manifest -> fall back to live Drive metadata discovery (R2).
-        await drive_service.discover_levels(force=True)
-    # Re-read captions so a caption edit takes effect without a redeploy (§11.2).
+    cache = await cloudinary_service.refresh()
     captions.reload_captions()
-
-    # §12.13.5: an explicit operator action MAY pull new images on demand even
-    # when the periodic loop is off — but only when creds are present (so the
-    # hermetic test path, which has dummy creds but no real Drive, stays a
-    # cheap re-read: run_sync_once short-circuits to a metadata list that the
-    # mocked tests already handle). We only fire it when the periodic sync is
-    # actually enabled to keep /api/refresh behavior identical under the test
-    # suite (sync disabled there).
-    sync_status = "disabled"
-    if _image_sync_interval() > 0 and os.environ.get("GD_API_KEY"):
-        try:
-            result = await drive_service.run_sync_once()
-            sync_status = str(result.get("status", "unknown"))
-        except Exception as exc:  # never let a sync error fail the refresh
-            logger.warning("On-demand sync errored: %s", type(exc).__name__)
-            sync_status = "error"
-
-    cache = drive_service.get_cache()
     return {
         "ready": cache.ready,
         "levels": len(cache.levels),
         "available": sorted(cache.folder_index.keys()),
-        "missing_folder": cache.missing_folder_id is not None,
-        "sync": sync_status,
+        "missing_pool": len(cache.missing_images),
     }

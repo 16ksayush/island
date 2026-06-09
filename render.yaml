@@ -2,9 +2,9 @@
 # Free-tier web service. Apply via Render Dashboard -> "New +" -> "Blueprint"
 # and point it at this repo, or `render blueprint launch`.
 #
-# Secrets are NOT stored here. GD_API_KEY is declared with `sync: false`, which
-# tells Render to prompt for / require the value in the dashboard rather than
-# read it from this committed file. Never commit the real key.
+# Secrets are NOT stored here. CLOUDINARY_URL is declared with `sync: false`,
+# which tells Render to prompt for / require the value in the dashboard rather
+# than read it from this committed file. Never commit the real secret.
 services:
   - type: web
     name: archive19-gallery
@@ -12,24 +12,23 @@ services:
     plan: free
     region: singapore         # low-traffic, Asia audience (HostQ5, 2026-06-09); options: oregon | frankfurt | singapore | ohio | virginia
     branch: main
-    buildCommand: pip install -r requirements.txt && python scripts/fetch_images.py
+    buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     autoDeploy: true
     healthCheckPath: /api/levels
     envVars:
       - key: PYTHON_VERSION
         value: "3.13.0"
-      # SECRET — set the real value in the Render dashboard (Environment tab).
-      # sync:false => Render requires it at deploy time and never reads it from git.
-      - key: GD_API_KEY
+      # SECRET — Cloudinary connection string
+      # (cloudinary://<api_key>:<api_secret>@<cloud_name>). Set the real value in
+      # the Render dashboard (Environment tab). sync:false => Render requires it
+      # at deploy time and never reads it from git. The api_secret is used ONLY
+      # server-side for the Admin API; delivery URLs are keyless (public CDN).
+      - key: CLOUDINARY_URL
         sync: false
-      # CONFIG — parent Drive folder ID (or share link). Safe to set in dashboard;
-      # left blank here so the app degrades gracefully until it's configured.
-      - key: GD_ROOT_FOLDER
-        sync: false
-      # CONFIG — background image-sync interval (M12 §12.13). 1800s = re-check
-      # Drive (metadata only) every 30 min and bake any new/changed images in
-      # the background, so new photos appear without a redeploy. Set 0 to disable.
-      # Unset locally/in CI keeps the suite hermetic (no background polling).
+      # CONFIG — background image re-list interval (M13). 1800s = re-list
+      # Cloudinary (metadata only — no byte download) every 30 min, so new
+      # photos appear without a redeploy. Set 0 to disable. Unset locally/in CI
+      # keeps the suite hermetic (no background polling).
       - key: IMAGE_SYNC_INTERVAL_SECONDS
         value: "1800"

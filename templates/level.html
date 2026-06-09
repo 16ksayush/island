@@ -192,8 +192,9 @@
             return;
           }
           images.forEach(function (img, idx) {
-            // SECURITY: img.url is a backend-proxied /api/levels/.../media/...
-            // path. We never touch a Drive URL or key client-side.
+            // img.url is an absolute keyless Cloudinary CDN link
+            // (https://res.cloudinary.com/...); no API secret is ever exposed
+            // client-side — the public CDN URL is intended (M13).
             var fig = document.createElement("figure");
             fig.className = "slide";
             var el = document.createElement("img");

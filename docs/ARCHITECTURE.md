@@ -12,37 +12,43 @@ Client JS ──► reconcile cookie ⇄ sessionStorage, drive audio + transitio
 The toggle is a small persistent control rendered into every template. Setting the theme is client-side (`document.cookie` + `sessionStorage`); the server only *reads* the cookie.
 
 ## 2. Asset split (D9)
-- **Images → Google Drive** (dynamic, proxied). One **parent** folder (`GD_ROOT_FOLDER`) with numbered child folders `0..18` + `missing/`.
-- **Audio → GitHub repo** (`static/audio/`, version-controlled, served static). Never in Drive.
+> **⚠️ Superseded by §13 (M13, 2026-06-09):** images now live in **Cloudinary** (`all ages/{N}`, `all ages/missing`) and are served from its keyless public CDN; there is no Drive proxy. The Drive description below is historical.
+- **Images → Google Drive** (dynamic, proxied). One **parent** folder (`GD_ROOT_FOLDER`) with numbered child folders `0..18` + `missing/`. *(M13: → Cloudinary, §13.)*
+- **Audio → GitHub repo** (`static/audio/`, version-controlled, served static). Never in Drive. *(Unchanged by M13.)*
 
 ## 3. Data flow
+> **⚠️ Superseded by §13 (M13, 2026-06-09).** The as-built flow uses **Cloudinary**: one server-side Admin API list (metadata) populates an in-process cache; the browser then loads images **directly from Cloudinary's keyless public CDN** — no `/media` proxy, no per-request external byte fetch. The Drive flow below is historical.
 ```
 Browser (haunted map / archipelago map — both illustrated, hotspot-based)
    │  GET /level/{id}  (SSR page)        │  GET /api/levels/{id}/photos
    ▼                                      ▼
 FastAPI (main.py) ── reads theme cookie ── renders level.html
    │                                      │
-   ▼ drive_service.py ──GD_API_KEY (os.environ)──► Google Drive API (under GD_ROOT_FOLDER)
-        • list parent's children → discover which numbered folders exist (dynamic scaling)
-        • numbered folder {id} present → list its images (audio = LOCAL /static/audio/{theme}/level_{id}.mp3)
-        • numbered folder {id} ABSENT  → 1 random image from Drive `missing/` (proxied); audio = a random LOCAL per-theme track (REQUIREMENTS §11)
+   ▼ cloudinary_service.py ──CLOUDINARY_URL api_secret (os.environ, server-side ONLY)──►
+        Cloudinary Admin API  (ONE list at startup; re-listed every IMAGE_SYNC_INTERVAL_SECONDS)
+        • list resources under "all ages/" → group by asset_folder → discover levels (dynamic scaling)
+        • "all ages/{N}" present → its images → keyless CDN urls (audio = LOCAL /static/audio/{theme}/level_{id}.mp3)
+        • "all ages/{N}" ABSENT  → 1 random image from "all ages/missing" (keyless CDN url); audio = a random LOCAL per-theme track (REQUIREMENTS §11)
    ▼
-Browser proxies image bytes (and missing-level fallback audio) via /api/levels/{id}/media/{file_id}; never sees the key.
-Existing-level audio is loaded directly from /static/audio/... (no Drive, no key).
+/api/levels/{id}/photos returns absolute keyless urls
+   https://res.cloudinary.com/{cloud}/image/upload/f_auto,q_auto/{public_id}.{fmt}
+Browser loads image bytes DIRECTLY from Cloudinary's CDN — no proxy, no server byte fetch, no credential.
+Existing-level audio is loaded directly from /static/audio/... (no external call, no key).
 ```
 
 ## 4. Endpoints
+> **⚠️ Superseded by §13 (M13, 2026-06-09):** the `/api/levels/{id}/media/{file_id}` proxy row is **removed** (the route no longer exists); `/api/levels/{id}/photos` `url` values are now absolute **keyless Cloudinary CDN URLs**, not proxy paths.
 | Method | Path | Purpose | Response |
 |---|---|---|---|
 | GET | `/` | Landing page; illustrated map of 19 hotspots per theme (Horror haunted map §8.3 / Sea archipelago map §9), discovery drives sealed styling; theme from cookie. | HTML (`index.html`) |
 | GET | `/level/{id}` | Dedicated level page; theme-styled (room/beach). | HTML (`level.html`) |
 | GET | `/api/levels` | Configured levels + availability flag (real vs missing-fallback). | `{ "levels": [{ "id": 0, "available": false }, ...] }` |
-| GET | `/api/levels/{id}/photos` | Image refs for a level + fallback audio ref when missing (proxied URLs back to our media endpoint). | see §4.1 |
-| GET | `/api/levels/{id}/media/{file_id}` | Proxy/stream a single Drive file's bytes (image OR missing-level audio). | image/* or audio/mpeg |
+| GET | `/api/levels/{id}/photos` | Image refs for a level (each with an absolute keyless Cloudinary CDN `url`) + fallback audio ref when missing. | see §4.1 |
 | GET (static) | `/static/audio/global/{theme}_ambient.mp3` | Landing ambient per theme. | audio/mpeg |
 | GET (static) | `/static/audio/{theme}/level_{id}.mp3` | Per-level track (per-theme, D11). | audio/mpeg |
 
 ### 4.1 Payload schemas (JSON)
+> **⚠️ §13 (M13):** the `url` field below is now an absolute **keyless Cloudinary CDN URL** (`https://res.cloudinary.com/{cloud}/image/upload/f_auto,q_auto/{public_id}.{fmt}`) instead of the `/api/levels/{id}/media/{file_id}` proxy path. The object shape (`file_id` + `url` + optional `caption`) and the `available`/`fallback_audio` semantics are otherwise unchanged. `file_id` is now the Cloudinary `public_id`.
 `GET /api/levels` →
 ```json
 { "levels": [ { "id": 0, "available": false }, { "id": 1, "available": true }, ... ] }
@@ -73,12 +79,13 @@ Route signatures (FastAPI):
 @app.get("/level/{level_id}")                      def level_page(request: Request, level_id: int)
 @app.get("/api/levels")                            def list_levels()
 @app.get("/api/levels/{level_id}/photos")          def level_photos(level_id: int)
-@app.get("/api/levels/{level_id}/media/{file_id}") def media_proxy(level_id: int, file_id: str)  # StreamingResponse
+# (M13, §13) media_proxy route REMOVED — images are served by Cloudinary's CDN, not proxied.
 ```
 Theme cookie is read inside `index` / `level_page` via `request.cookies.get("theme", "horror")`.
 
 ## 5. Dynamic level + missing handling (drive_service.py)
-- Source of truth: the **children of `GD_ROOT_FOLDER`**. List them once → the numeric-named folders define which levels exist (dynamic scaling). The grid renders exactly those; gaps still render a door/island flagged `available: false`.
+> **⚠️ Superseded by §13 (M13, 2026-06-09):** discovery is now done by **`app/cloudinary_service.py`**, which makes **one Cloudinary Admin API list** of `resources/image` and groups by `asset_folder` (`all ages/{N}` → level N, `all ages/missing` → fallback). `drive_service.py` is **deleted**. The dynamic-scaling and missing-fallback semantics below are preserved; the source (Drive children → Cloudinary Admin list) and the access mechanism (API key + folder sharing → `CLOUDINARY_URL` api_secret) are the only changes. The "CRITICAL — Drive access method" callout below no longer applies (no Drive, no folder-sharing precondition).
+- Source of truth: the **children of `GD_ROOT_FOLDER`**. List them once → the numeric-named folders define which levels exist (dynamic scaling). The grid renders exactly those; gaps still render a door/island flagged `available: false`. *(M13: source is now the Cloudinary Admin list grouped by `asset_folder` under `all ages/`.)*
 
 ### 5.1 Level → folder map (in-memory, discovery-derived)
 No hand-edited level→folder JSON file is shipped (would duplicate the Drive truth and drift). Instead the map is built once at startup (and cached) by listing the parent's children, e.g.:
@@ -104,6 +111,7 @@ No hand-edited level→folder JSON file is shipped (would duplicate the Drive tr
 - Defensive auto-play handling: resume/start on first user gesture; fail silently if blocked.
 
 ## 7. Project structure
+> **⚠️ M1 baseline — superseded.** This tree predates M11/M12/M13. As-built (M13): `app/drive_service.py` is **deleted** and replaced by `app/cloudinary_service.py`; `scripts/` (the M12 bake) is **deleted**; `app/captions.py` + `app/captions.json` (M11) are present; `.env.example` holds `CLOUDINARY_URL` + `IMAGE_SYNC_INTERVAL_SECONDS`. See the current tree in `README.md` ("Project structure") and §13.
 ```
 island/
 ├── app/
@@ -852,3 +860,39 @@ static/img/levels/
 
 ### 12.13 summary
 Build-bake remains the cold-start floor; a `lifespan`-owned `asyncio` task lists Drive metadata every `IMAGE_SYNC_INTERVAL_SECONDS` (default 1800, **0/unset disables** for hermetic local/CI/tests), change-gates on the **per-level `file_id` set** (count as a fast pre-check), and on a change only, paced-downloads the delta into the static dir + atomically swaps `manifest.json` and reloads the in-memory discovery/caption scope. It is single-flight, crash-proof (catch-all → retry next interval), and `POST /api/refresh` runs the same path for an on-demand, token-gated force. No per-request Drive calls are added; static serving stays Drive-free. **No change to the build-bake, static-serving, manifest-PRIMARY, or `(level, filename)` caption-key decisions (§12.2–§12.9) — the sync writes into the SAME layout/manifest and reuses the SAME paced downloader + loader.**
+
+> **⚠️ §12 entirely superseded by §13 (M13, 2026-06-09).** The Drive build-bake, the `static/img/levels/` + `manifest.json` layout, the manifest-PRIMARY discovery, the kept `/media` proxy, and the periodic **download** sync above are all replaced by Cloudinary. The periodic task survives in spirit as a metadata-only **Admin re-list** (no byte download); everything else in §12 is historical. The Drive `alt=media` throttle that §12 worked around is moot — there is no per-request external byte fetch.
+
+---
+
+# 13. Cloudinary source (as-built) — M13
+
+> Supersedes the Drive parts of §2/§3/§4/§5 and the **whole of §12 (M12 Drive build-bake)** and the **M9/M12 Drive-bake** references. The image source is now Cloudinary; there is no Drive client, no proxy, no build-bake, no `static/img/levels/`.
+
+## 13.1 Module
+`app/cloudinary_service.py` replaces `app/drive_service.py` (deleted). It owns discovery, the in-process cache, the keyless CDN URL builder, and the missing-fallback pool. `scripts/fetch_images.py` (M12 bake) is deleted; `scripts/` is removed.
+
+## 13.2 Discovery (one Admin API list, metadata only)
+- `_parse_cloudinary_url()` reads `CLOUDINARY_URL` (`cloudinary://<api_key>:<api_secret>@<cloud_name>`); a missing/malformed value returns `None` → graceful empty-gallery degrade (never raises).
+- `discover()` makes one **paginated** Cloudinary **Admin API** list of `resources/image` (HTTP basic auth with `api_key:api_secret`, server-side only) and groups by `asset_folder`: `all ages/{N}` → level N, `all ages/missing` → fallback pool; resources outside `all ages/` are ignored. Result cached in `DiscoveryCache` (`get_cache()`).
+- A `lifespan` background task re-runs `discover()` every `IMAGE_SYNC_INTERVAL_SECONDS` (default 1800; **0/unset disables** → hermetic local/CI) and atomically swaps the cache; `POST /api/refresh` forces an immediate re-list. This is **metadata only — no byte download** (so the §12 throttle/pacing machinery is gone).
+
+## 13.3 Keyless delivery
+Each `ImageRef` carries `file_id` (= Cloudinary `public_id`), `filename_stem` (= `public_id` with Cloudinary's random `_xxxxxx` suffix stripped — the caption key, §13.4), and an absolute `url`:
+```
+https://res.cloudinary.com/{cloud}/image/upload/f_auto,q_auto/{public_id}.{fmt}
+```
+`f_auto,q_auto` = free automatic format + quality. The browser loads bytes straight from Cloudinary's CDN; the app is never on the byte path and the `api_secret` never appears in the URL, payload, or logs.
+
+## 13.4 Caption key = filename stem
+M11 captions are still keyed by filename, but the key is the **stem** (`app/captions.json` / `app/captions.py`). Cloudinary derives a `public_id` like `15.1_gpoksj`; `_filename_stem()` strips the random suffix back to `15.1`, which equals the original `{n}.{i}` base, so all captions keep matching. `original_filename` comes back null from the Admin API (verified live), so the stem is derived from `public_id`.
+
+## 13.5 Endpoints / payload (as-built)
+- `/api/levels/{id}/media/{file_id}` and `resolve_media` are **removed**.
+- `/api/levels/{id}/photos` returns each image as `{ "file_id": "<public_id>", "url": "<keyless CDN url>", "caption"?: {...} }`; `available`/`fallback_audio` semantics unchanged (missing-level audio still a local per-theme track, §11). `file_id` is now the `public_id`.
+
+## 13.6 Config + deploy
+- `CLOUDINARY_URL` (secret) replaces `GD_API_KEY` + `GD_ROOT_FOLDER`; `IMAGE_SYNC_INTERVAL_SECONDS` retained. `render.yaml` `buildCommand` is just `pip install -r requirements.txt` (no bake); region `singapore`. No Drive folder-sharing precondition. M8 deploy now needs only `CLOUDINARY_URL`.
+
+## 13.7 Tests
+Hermetic suite **163 passed**: the Cloudinary Admin API is mocked in `tests/conftest.py`; `tests/test_cloudinary.py` added; `tests/test_cache.py` + `tests/test_m12_bake_manifest.py` deleted; `tests/test_backend.py` / `tests/test_captions.py` converted. No network, no real secret.

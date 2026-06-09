@@ -1,9 +1,9 @@
 """Frontend / SSR behavioral test suite (T11b).
 
 Verifies the now-real Jinja2 templates (templates/index.html, templates/level.html)
-against the live backend contract. All Google Drive access stays mocked via the
-shared fixtures in tests/conftest.py (patched_drive / patched_media) — the suite
-is hermetic and offline.
+against the live backend contract. The image source is Cloudinary (M13); its
+Admin API is mocked via the shared ``client`` fixture in tests/conftest.py
+(``patched_cloudinary``) — the suite is hermetic and offline.
 
 Covers the 6 required areas:
   1. SSR theme class per cookie (D1/D3) — asserted against rendered HTML.

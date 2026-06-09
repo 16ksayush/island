@@ -260,9 +260,15 @@
         var MAX_CONCURRENCY = 2; // gentle: at most 2 levels in flight at once
 
         // Warm one image URL into the cache. We only ever consume the backend
-        // `url` field (a /api/levels/.../media/... path) — never a Drive URL.
+        // `url` field — under M13 that is an absolute keyless Cloudinary CDN
+        // link (https://res.cloudinary.com/...); local same-origin paths (/...)
+        // are still accepted for any non-Cloudinary asset.
         function warmImage(url) {
-          if (typeof url !== "string" || url.charAt(0) !== "/") return;
+          if (
+            typeof url !== "string" ||
+            !(url.charAt(0) === "/" || url.indexOf("https://") === 0)
+          )
+            return;
           try {
             var img = new Image();
             img.decoding = "async";

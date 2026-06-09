@@ -121,14 +121,19 @@ def reload_captions() -> dict[str, dict[str, dict[str, str]]]:
     return _captions
 
 
-def get_caption(level_id: int, filename: str) -> Optional[dict[str, str]]:
+def get_caption(level_id: int, stem: str) -> Optional[dict[str, str]]:
     """Return the ``{"sea", "horror"}`` dict for one image, or ``None``.
 
-    Keyed by ``(level, filename)`` using ``PhotoRef.name`` (NOT ``file_id`` —
-    CapQ1). ``None`` is returned when the level, the filename, or any caption
-    data is absent. The returned dict MAY be partial (only one theme). Lookups
-    are pure dict gets — no I/O (NF-Cap5). Loads lazily if not yet initialized.
+    Keyed by ``(level, stem)`` where ``stem`` is the image's filename stem (the
+    extension-less name, e.g. ``"15.5"`` / ``"2.1"`` / ``"1"``) — NOT a
+    ``file_id`` (ids are not stable across re-upload, CapQ1). Under M13 the image
+    source is Cloudinary, which gives a ``public_id`` like ``15.5_abc123``; the
+    service strips the random suffix to ``15.5`` and passes THAT stem here, so
+    the re-keyed ``captions.json`` (also keyed by stem) lines up. ``None`` is
+    returned when the level, the stem, or any caption data is absent. The
+    returned dict MAY be partial (only one theme). Pure dict gets — no I/O
+    (NF-Cap5). Loads lazily if not yet initialized.
     """
     captions = load_captions()
-    entry = captions.get(str(level_id), {}).get(filename)
+    entry = captions.get(str(level_id), {}).get(stem)
     return entry or None

@@ -1,6 +1,6 @@
 # Requirements — Archive 19: Dual-Atmosphere Dynamic Gallery
 
-Status: **Discovery COMPLETE — design approved, asset reality confirmed (§7).** **M12 — Build-time image baking: Discovery COMPLETE pending user sign-off — design LOCKED (§14 + ARCHITECTURE §12); user decided Approach A (bake at BUILD time → serve static, no runtime Drive image proxy, 2026-06-09). Architect resolved BakeQ2/Q3/Q5/Q6 (bake `missing/`; manifest PRIMARY + metadata FALLBACK; verbatim `PhotoRef.name`; same script locally). Three user-facing items remain: BakeQ1 (keep/drop the media proxy — recommend KEEP), redeploy-acceptance (NF-Bake6), and the D12 build precondition (env vars in Render + Drive "Anyone with link → Viewer"). Depends on M11 (captions keyed by (level, filename) must keep matching — hard gate NF-Bake4), interacts with M8 (M12 edits only `render.yaml buildCommand`; M8 only the region line — non-overlapping). Execution (B3–B8) runs on sign-off.** Supersedes the original single-theme blueprint. Build proceeds with placeholders (§8). **M8 — Deploy: host CHOSEN — Render (D13); HostQ1 RESOLVED. Remaining open Qs = cold-start tolerance, domain, /api/refresh auth, Drive-sharing confirm, traffic/region (HostQ2–Q5 + R-D6) — these shape but do not block the Render deploy. Requirements in §12.** **M10 — Sea (Light) landing map: BUILT, SECURITY-APPROVED, QA-VERIFIED (140 passed) — pending commit; see §10 (frontend-only; replaced the Sea island grid with a full-bleed archipelago map + hotspots; Horror untouched). Prior: Horror Atmosphere Redesign §9 (M9, shipped). After M9+M10, both themes are map-based.**
+Status: **Discovery COMPLETE — design approved, asset reality confirmed (§7).** **M13 — Drive→Cloudinary image-source migration: BUILT, SECURITY-APPROVED, QA-VERIFIED (full suite 163 passed, hermetic) — see §15. The image source is now Cloudinary (keyless public CDN); the Drive byte-proxy, the M12 build-bake, and `app/drive_service.py`/`scripts/fetch_images.py` are removed. §15 SUPERSEDES the Drive-coupled parts of F8/F10, D2/D6/D9/D10/D12, §6, §7, §12, §14 (one-line supersession pointers added in place; history preserved).** **M12 — Build-time image baking: Discovery COMPLETE pending user sign-off — design LOCKED (§14 + ARCHITECTURE §12); user decided Approach A (bake at BUILD time → serve static, no runtime Drive image proxy, 2026-06-09). Architect resolved BakeQ2/Q3/Q5/Q6 (bake `missing/`; manifest PRIMARY + metadata FALLBACK; verbatim `PhotoRef.name`; same script locally). Three user-facing items remain: BakeQ1 (keep/drop the media proxy — recommend KEEP), redeploy-acceptance (NF-Bake6), and the D12 build precondition (env vars in Render + Drive "Anyone with link → Viewer"). Depends on M11 (captions keyed by (level, filename) must keep matching — hard gate NF-Bake4), interacts with M8 (M12 edits only `render.yaml buildCommand`; M8 only the region line — non-overlapping). Execution (B3–B8) runs on sign-off.** Supersedes the original single-theme blueprint. Build proceeds with placeholders (§8). **M8 — Deploy: host CHOSEN — Render (D13); HostQ1 RESOLVED. Remaining open Qs = cold-start tolerance, domain, /api/refresh auth, Drive-sharing confirm, traffic/region (HostQ2–Q5 + R-D6) — these shape but do not block the Render deploy. Requirements in §12.** **M10 — Sea (Light) landing map: BUILT, SECURITY-APPROVED, QA-VERIFIED (140 passed) — pending commit; see §10 (frontend-only; replaced the Sea island grid with a full-bleed archipelago map + hotspots; Horror untouched). Prior: Horror Atmosphere Redesign §9 (M9, shipped). After M9+M10, both themes are map-based.**
 
 ## 1. Vision
 An interactive web app with a **variable** number of levels (0 → up to 18) presented through **two distinct, toggleable realities**. The chosen theme persists across the whole session and is switchable from any page.
@@ -23,9 +23,9 @@ An interactive web app with a **variable** number of levels (0 → up to 18) pre
 | F5 | The active theme dictates how the level page is presented (room vs beach). | Must |
 | F6 | Landing page plays the theme's **global ambient** track. | Must |
 | F7 | Entering a level **crossfades**: wind down global ambient, scale up that level's track. | Must |
-| F8 | Images per level fetched from numbered Google Drive subfolders, proxied as bytes (D2). | Must |
+| F8 | Images per level fetched from numbered Google Drive subfolders, proxied as bytes (D2). *(Superseded by §15, 2026-06-09: images now live in Cloudinary under `all ages/{N}`; a server-side Admin list discovers them and the browser loads them directly from Cloudinary's keyless public CDN — no per-request proxy.)* | Must |
 | F9 | **Missing-level fallback:** if a numbered folder is absent (or present-but-empty), pull 1 random **image** from the Drive `missing/` folder (proxied through the backend). The fallback **audio** is a random **local per-theme track** from `static/audio/{theme}/` chosen client-side — NOT from Drive — so the `missing/` folder only needs images and a missing level never fails over absent audio. *(History: originally the audio also came from the Drive `missing/` folder; changed 2026-06-09 — see §11.)* | Must |
-| F10 | Browser never receives the Google Drive API key. | Must |
+| F10 | Browser never receives the Google Drive API key. *(Superseded by §15, 2026-06-09: key isolation now means the Cloudinary `api_secret` (in `CLOUDINARY_URL`) stays server-side — used only for the Admin API; image delivery is keyless, so the browser receives only public `res.cloudinary.com` CDN URLs with no credential.)* | Must |
 | F11 | Responsive layout for both theme landing maps (haunted / archipelago) — scale-to-fit on desktop, pan-to-fit on mobile (§9/§10). | Should |
 
 ## 4. Non-functional
@@ -36,25 +36,28 @@ An interactive web app with a **variable** number of levels (0 → up to 18) pre
 
 ## 5. Decisions (locked in Discovery)
 - **D1 — Theme persistence:** ✅ **Cookie + sessionStorage.** SSR reads the cookie to render the correct theme on first paint (no flash); client JS mirrors to `sessionStorage`.
-- **D2 — Image delivery:** ✅ Backend **proxies image bytes**; Drive folders may stay private.
+- **D2 — Image delivery:** ✅ Backend **proxies image bytes**; Drive folders may stay private. *(Superseded by §15, 2026-06-09: no proxy — images are delivered **directly from Cloudinary's public CDN**; the backend only lists metadata via the Admin API.)*
 - **D3 — Default theme:** ✅ **Horror** for first-time visitors with no saved choice.
 - **D4 — Level model:** ✅ **Dedicated page per level** at `/level/{id}` (`level.html`).
 - **D5 — Level set:** ✅ All 19 (0–18), numbered Drive folders; dynamic scaling so missing numbers are allowed.
-- **D6 — Missing handling:** ✅ Absent numbered folder → random **image** from the Drive `missing/` folder, proxied through the backend. *(Superseded 2026-06-09 — §11: the fallback **audio** is now a random LOCAL per-theme track, not from Drive.)*
+- **D6 — Missing handling:** ✅ Absent numbered folder → random **image** from the Drive `missing/` folder, proxied through the backend. *(Superseded 2026-06-09 — §11: the fallback **audio** is now a random LOCAL per-theme track, not from Drive. Further superseded by §15, 2026-06-09: the fallback **image** is now a random image from the Cloudinary `all ages/missing` folder, served as a keyless CDN URL — no proxy.)*
 - **D7 — Level metadata:** ✅ Number only (no titles/descriptions).
 - **D8 — Access:** ✅ Public, no auth.
-- **D9 — Asset split:** ✅ **Images in Google Drive; all audio in the GitHub repo** (`static/audio/`). The **missing-level fallback** image comes from the Drive `missing/` folder; its audio is a random LOCAL per-theme track *(updated 2026-06-09 — §11; was previously Drive `missing/` audio)*.
-- **D12 — Drive access:** ✅ The `all ages` parent folder is shared **"Anyone with the link → Viewer"**, so the plain `GD_API_KEY` can read it. No service account needed.
-- **D10 — Drive config:** ✅ A single **parent** Drive folder (one link/ID in `GD_ROOT_FOLDER`) whose children are the numbered subfolders `0..18` + `missing/`. Backend lists the parent's children to discover which levels exist → dynamic scaling.
+- **D9 — Asset split:** ✅ **Images in Google Drive; all audio in the GitHub repo** (`static/audio/`). The **missing-level fallback** image comes from the Drive `missing/` folder; its audio is a random LOCAL per-theme track *(updated 2026-06-09 — §11; was previously Drive `missing/` audio)*. *(Superseded by §15, 2026-06-09: images now live in **Cloudinary** (`all ages/{N}`, missing = `all ages/missing`), not Drive; audio remains in the GitHub repo.)*
+- **D12 — Drive access:** ✅ The `all ages` parent folder is shared **"Anyone with the link → Viewer"**, so the plain `GD_API_KEY` can read it. No service account needed. *(Superseded by §15, 2026-06-09: no Drive sharing — assets live in a **Cloudinary account** reached via the `CLOUDINARY_URL` `api_secret` (server-side Admin API); delivery is via Cloudinary's public CDN. No folder-sharing precondition remains.)*
+- **D10 — Drive config:** ✅ A single **parent** Drive folder (one link/ID in `GD_ROOT_FOLDER`) whose children are the numbered subfolders `0..18` + `missing/`. Backend lists the parent's children to discover which levels exist → dynamic scaling. *(Superseded by §15, 2026-06-09: discovery now lists **Cloudinary** resources under the `all ages/` asset-folder prefix — `all ages/{N}` → level N, `all ages/missing` → fallback — via one Admin API call; dynamic scaling unchanged. `GD_ROOT_FOLDER` is replaced by `CLOUDINARY_URL`.)*
 - **D13 — Hosting (M8):** ✅ **Render free web service** — via the committed `render.yaml` Blueprint (zero new code/config). Resolves **HostQ1**: KEEP the FastAPI Drive-proxy + in-memory-cache architecture on a persistent web-service host. **Fly.io** (Fallback A) and **Hugging Face Spaces** (Fallback B) remain documented alternatives (ARCHITECTURE §10.3); **Vercel** (serverless rework) and **GitHub Pages** (static-only, would expose the secret) are rejected. *User-decided 2026-06-09.* Remaining open Qs (HostQ2–HostQ5 + R-D6) shape the deploy but do not block starting it.
 - **D11 — Per-theme level tracks:** ✅ Horror and Sea each have their **own** per-level tracks (`static/audio/horror/`, `static/audio/sea/`). The missing-level fallback audio is a random track drawn from the **active theme's** local set *(updated 2026-06-09 — §11; previously it came from the Drive `missing/` folder)*.
 
 ## 6. Configuration variables
-- `GD_API_KEY` — **secret**, never committed; read via `os.environ`.
-- `GD_ROOT_FOLDER` — the parent Drive folder ID/link (data, not secret); shipped as a fill-in in `.env.example`.
+*(Superseded by §15, 2026-06-09 — the variables below are replaced by `CLOUDINARY_URL` (secret) + `IMAGE_SYNC_INTERVAL_SECONDS` (config). The historical Drive vars are retained for context.)*
+- `GD_API_KEY` — **secret**, never committed; read via `os.environ`. *(Removed — §15.)*
+- `GD_ROOT_FOLDER` — the parent Drive folder ID/link (data, not secret); shipped as a fill-in in `.env.example`. *(Removed — §15.)*
+- `CLOUDINARY_URL` (§15) — **secret**, `cloudinary://<api_key>:<api_secret>@<cloud_name>`; the `api_secret` is server-side only (Admin API); delivery is keyless.
+- `IMAGE_SYNC_INTERVAL_SECONDS` (§12.13 / §15) — config; background Admin re-list interval (1800s prod; 0/unset disables → hermetic locally/CI).
 
 ## 7. Confirmed asset reality
-- Parent folder `all ages` (renameable) contains numbered subfolders. **Present:** `1, 2, 8–18`. **Absent:** `0, 3–7` → exercise the missing fallback. Images named `{n}.{i}.jpeg`.
+- Parent folder `all ages` (renameable) contains numbered subfolders. **Present:** `1, 2, 8–18`. **Absent:** `0, 3–7` → exercise the missing fallback. Images named `{n}.{i}.jpeg`. *(Superseded by §15, 2026-06-09: the same asset set now lives in **Cloudinary** under the `all ages/` asset-folder prefix (`all ages/{N}`, `all ages/missing`); Cloudinary appends a random suffix to derived `public_id`s, so captions key on the filename **stem** with that suffix stripped — see §15.)*
 
 ## 8. Status: Discovery COMPLETE ✅
 All design questions resolved. Build proceeds with **placeholders**:
@@ -371,3 +374,41 @@ The per-request Google Drive image **proxy keeps hitting throttling**: Drive's d
 ### 14.7 In/out of scope (explicit)
 - **In scope:** a **build-time fetch/bake script** (single source of truth, used by `render.yaml` + local dev); a **static layout** under `static/img/levels/{id}/{filename}`; the `/api/levels/{id}/photos` **`url` change** (proxy path → static path, filename preserved); the **`render.yaml` `buildCommand`** extension to run the bake (with build-time env vars); a **`.gitignore`** rule ignoring the baked dir (NF-Bake1); the keep/drop decision for the **media proxy** (BakeQ1) + the discovery/manifest source (BakeQ3); README/ARCHITECTURE doc updates; QA URL-assertion + caption-match updates; SECURITY audit of the new build path + `.gitignore`.
 - **Out of scope:** any **theme/UI** change (M9/M10 maps untouched), the **audio** engine (local audio per §11 unchanged), **routes other than** the `url` value (and BakeQ1's optional proxy removal), the **caption authoring** (M11 content unchanged — only its key must keep matching), **M8's** separate `render.yaml` region edit + `/api/refresh` token-gate (independent, coordinate the shared `render.yaml` file), and any **database** or runtime-fetch-into-memory approach (rejected in §14.1).
+
+> **⚠️ Superseded by §15 (2026-06-09).** The entire M12 Drive build-bake — `scripts/fetch_images.py`, `static/img/levels/` + `manifest.json`, the manifest-PRIMARY discovery, and the kept `/media` proxy fallback — is **replaced by Cloudinary** (§15). The throttle problem M12 worked around (the Drive `alt=media` download rate-limit, §14.1) is **gone for good** because there is no longer any per-request external byte fetch. BakeR1–BakeR7 / NF-Bake1–NF-Bake7 are historical.
+
+---
+
+## 15. M13 — Google Drive → Cloudinary image-source migration (change request — 2026-06-09)
+
+Status: **BUILT + SECURITY-APPROVED + QA-VERIFIED (full suite 163 passed / 0 failed; was 182) — pending commit (2026-06-09).** Image hosting moved off Google Drive entirely onto **Cloudinary**; the Drive byte-proxy, the M12 build-bake, and their dead code are removed. All M9/M10/M11 features and locked decisions D1/D3/D4/D5/D7/D8/D11/D13 are preserved; the Drive-coupled items F8/F10, D2/D6/D9/D10/D12, §6, §7, §12, and §14 are **superseded** by this section (supersession pointers added in place — history is not rewritten).
+
+### 15.1 Intent
+Replace the per-request Google Drive image proxy (and the M12 build-time bake that worked around its `alt=media` download throttle) with **Cloudinary**, whose public CDN serves image bytes directly and keylessly. This eliminates the Drive throttle problem at its root: there is no longer any per-request external byte fetch from the app.
+
+### 15.2 As-built data flow
+- **Discovery:** `app/cloudinary_service.py` makes **one** Cloudinary **Admin API** list of `resources/image` (metadata only — paginated) at startup, groups resources by `asset_folder`: `all ages/{N}` → level N, `all ages/missing` → the fallback pool; resources outside `all ages/` are ignored. The result is cached in-process (`DiscoveryCache`). A background task re-runs this list every `IMAGE_SYNC_INTERVAL_SECONDS` (default 1800; 0/unset disables → hermetic locally/CI) and atomically swaps the cache; `POST /api/refresh` forces an immediate re-list.
+- **Delivery (keyless):** each image's `url` in `/api/levels/{id}/photos` is an absolute, credential-free CDN URL `https://res.cloudinary.com/{cloud}/image/upload/f_auto,q_auto/{public_id}.{format}` (`f_auto,q_auto` = free automatic format + quality). The **browser loads bytes straight from Cloudinary's CDN** — the app is not on the byte path.
+- **Missing fallback:** for an absent/empty level the backend re-rolls a random image from the `all ages/missing` pool (R3 preserved) and serves its keyless CDN URL; fallback audio remains a random LOCAL per-theme track (§11).
+
+### 15.3 What's removed
+- `app/drive_service.py` (whole module: Drive client, child discovery, `resolve_media`, manifest loader, paced downloader, byte LRU) — **deleted**.
+- `scripts/fetch_images.py` (M12 build-bake) — **deleted**; `scripts/` is now empty and removed.
+- The `GET /api/levels/{id}/media/{file_id}` proxy route and `resolve_media` byte path — **gone** (no per-request external fetch).
+- `static/img/levels/` build-bake output + its `.gitignore` rule — gone (the bake no longer exists; `static/img/{horror,light,logo}` brand/map assets and the `static/audio/**/*.mp3` allow-list are unaffected).
+
+### 15.4 Environment change
+- `GD_API_KEY` + `GD_ROOT_FOLDER` → **replaced by `CLOUDINARY_URL`** (secret, `cloudinary://<api_key>:<api_secret>@<cloud_name>`). The `api_secret` is used **only** server-side for the Admin API (HTTP basic auth) and MUST never appear in the payload, logs, or any client bundle (F10-equivalent hard gate — SECURITY veto; honored). Delivery URLs carry no credential.
+- `IMAGE_SYNC_INTERVAL_SECONDS` retained (background Admin re-list interval).
+- `render.yaml`: `buildCommand` is now just `pip install -r requirements.txt` (no bake step); `CLOUDINARY_URL` declared `sync:false`; `IMAGE_SYNC_INTERVAL_SECONDS=1800`; region `singapore`. `.env.example` updated.
+
+### 15.5 Captions by filename stem
+- M11 captions remain keyed by the image **filename**, but the key is now the filename **stem** (`app/captions.json` + `app/captions.py`). Cloudinary appends a random 6-char suffix to a derived `public_id` (e.g. `15.1` uploaded under `all ages` → `public_id` `15.1_gpoksj`); the stable stem is the `public_id` with that suffix stripped, which equals the original `{n}.{i}` base. All real-image captions re-keyed to stems and verified matching. The payload `caption` behavior is unchanged (optional, back-compatible).
+
+### 15.6 Verification + deploy note
+- Full suite **163 passed**, hermetic: QA deleted `tests/test_cache.py` + `tests/test_m12_bake_manifest.py`, added `tests/test_cloudinary.py`, converted `tests/test_backend.py` / `tests/test_captions.py`, and rewrote `tests/conftest.py` to mock the Cloudinary Admin API (no network, no real secret). After the dead-code deletion (D15 cleanup) the suite still reports **163 passed** (nothing depended on the removed modules).
+- **M8 impact:** the Render deploy now needs only **`CLOUDINARY_URL`** set in the dashboard — no Google Drive vars, no Drive "Anyone with link → Viewer" precondition, no build-time bake. The build is a plain `pip install`. This supersedes HostR2/HostR3/HostQ4/§12.1 Drive specifics (key isolation now = Cloudinary `api_secret` server-side; delivery keyless).
+
+### 15.7 In/out of scope (explicit)
+- **In scope:** `app/cloudinary_service.py` (new source); `app/main.py` (Cloudinary-backed discovery + background re-list + keyless `url`); `app/captions.json` / `app/captions.py` (stem re-key); `render.yaml` + `.env.example` (env swap, build simplified); deletion of `app/drive_service.py` + `scripts/fetch_images.py` + the `static/img/levels/` ignore rule; the QA suite rework; README + this doc + ARCHITECTURE + PLAN sync.
+- **Out of scope:** any theme/UI change (M9/M10 maps untouched), the audio engine (local audio per §11 unchanged), the captions **content** (only the key form changed: filename → filename stem), and the `/api/refresh` token-gate (R-D6, tracked under M8).
