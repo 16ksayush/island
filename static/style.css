@@ -1360,6 +1360,7 @@ a {
 }
 
 .slide {
+  position: relative; /* anchor the overlaid .slide-caption (M11) */
   flex: 0 0 100%;
   scroll-snap-align: center;
   display: flex;
@@ -1378,6 +1379,77 @@ a {
   border-radius: 8px;
   border: 1px solid var(--tile-border);
   background: var(--bg-2);
+}
+
+/* =========================================================================
+   M11 — Per-slide image caption (dual-theme, overlaid bottom bar)
+   -------------------------------------------------------------------------
+   A <figcaption class="slide-caption"> is appended inside each .slide <figure>
+   by renderImages() ONLY when the image carries a caption for the active theme
+   (graceful absence: no element -> no box). The base rule below is NEUTRAL
+   layout only (no palette); the colour/scrim skins are .theme-* scoped below,
+   following the §8.6/§9.7 isolation rule. pointer-events:none so it can never
+   intercept swipe/scroll/slide-nav clicks (the track stays fully interactive).
+   The caption travels with its own slide, so the 3s auto-advance, prefetch,
+   dots, and audio crossfade are untouched (no new sync logic, no regression).
+   ========================================================================= */
+.slide-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 1.75rem 1.1rem 0.85rem;
+  pointer-events: none; /* never block swipe/scroll/nav */
+  font-size: 0.95rem;
+  line-height: 1.35;
+  text-align: center;
+  border-bottom-left-radius: 8px; /* match .slide-img corner */
+  border-bottom-right-radius: 8px;
+  /* Clamp to 2 lines max with ellipsis so a long caption never grows the slide
+     box or pushes the dots/nav (NF-Cap4). Don't cover the whole photo. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Horror skin: gothic — amber/parchment text on a heavier dark scrim. */
+.theme-horror .slide-caption {
+  color: #ffd98a; /* warm amber-parchment, AA over the dark scrim below */
+  font-family: "Georgia", "Times New Roman", serif;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  background: linear-gradient(
+    to top,
+    rgba(5, 7, 13, 0.92) 0%,
+    rgba(5, 7, 13, 0.6) 55%,
+    rgba(5, 7, 13, 0) 100%
+  );
+}
+
+/* Sea skin: sunlit — deep navy/teal text on a soft light scrim. */
+.theme-sea .slide-caption {
+  color: #06324d; /* deep azure-navy, AA over the light scrim below */
+  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.75);
+  background: linear-gradient(
+    to top,
+    rgba(240, 249, 255, 0.94) 0%,
+    rgba(240, 249, 255, 0.62) 55%,
+    rgba(240, 249, 255, 0) 100%
+  );
+}
+
+/* Mobile (<=480px): keep legible — smaller text + tighter padding so the
+   overlay never crowds the photo or the dots/nav (NF-Cap4). */
+@media (max-width: 480px) {
+  .slide-caption {
+    font-size: 0.82rem;
+    padding: 1.4rem 0.7rem 0.65rem;
+  }
 }
 
 .slide-loading,

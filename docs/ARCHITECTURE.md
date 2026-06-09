@@ -474,3 +474,381 @@ Static-only: no Python process (fails HostR1), cannot hold `GD_API_KEY` (fails H
 - **R-D6 (`POST /api/refresh` exposure — for SECURITY review):** the refresh endpoint mutates in-process state and triggers an outbound Drive listing with the server-side key. It currently has no documented auth. **SECURITY_ENGINEER to rule** whether it needs protection (token/header) before the app is public, or whether read-only impact + rate-limit is acceptable.
 - **R-D7 (free-tier egress vs streamed Drive bytes — HostR9):** the proxy streams image bytes through the host, counting against free-tier bandwidth/fair-use. Low traffic (HostQ5 lean) keeps this well under limits; the LRU reduces repeat Drive egress while warm. Flag if traffic expectations rise.
 - **R-D8 (HostQ4 Drive sharing must hold in prod):** the deployed `GD_API_KEY` can only read the Drive parent if it stays **"Anyone with the link → Viewer"** (D12). If access is restricted, every fetch 502s in production (cf. §11). Confirm D12 unchanged before/at deploy — a hard runtime precondition, not just a config.
+
+---
+
+# 11. Image captions (dual-theme) (M11 / CapR1–CapR7, NF-Cap1–NF-Cap6, CapQ1–CapQ7)
+
+Status: **BUILT + verified — matches this design (2026-06-09; full suite 156 passed; pending commit).** The as-built code implements §11.1–§11.4 exactly: the `(level, filename)` key (§11.1) is read from `PhotoRef.name`; `app/captions.py` is the tolerant startup-cached loader re-read on `POST /api/refresh` (§11.2/§11.7); `app/main.py`'s `_ref` helper performs the caption lookup and attaches an **optional** `caption:{sea,horror}` to each image object (omitted when absent — additive, backward-compatible, §11.3); and `templates/level.html` renders a per-slide `<figcaption class="slide-caption">` theme-skinned in `static/style.css` (§11.4). Data file `app/captions.json` holds **52 images × {sea,horror} = 104 captions** (levels 1, 2, 8–18); subject = nickname "Chudail" (no PII — NF-Cap2). This section is additive to §1–§10; it changed **no route signature**, is **payload-backward-compatible** (CapR6/NF-Cap5), and touched **no decision D1–D13**. The feature is **optional/degrade-to-nothing by design**: an image with no caption renders exactly as today.
+
+## 11.1 Caption → image key — RESOLVES CapQ1 / CapR4 (the pivotal decision)
+
+**Recommendation: key captions by `(level, filename)`, NOT by Drive `file_id`.**
+
+The two candidate shapes (both shown so the tradeoff is explicit):
+
+**Candidate A — keyed by Drive `file_id` (REJECTED):**
+```json
+{
+  "1AbCxyz_driveFileId": { "sea": "...", "horror": "..." },
+  "9KmNopq_driveFileId": { "sea": "...", "horror": "..." }
+}
+```
+- Pro: the id is exactly what the payload already exposes (`_ref` emits `file_id`), so the frontend match is trivial and the backend needs no extra lookup.
+- **Con (fatal): Drive file ids are NOT stable across re-upload.** If the user re-uploads even one photo (re-crop, rotate, replace), Drive mints a **new id** and that image silently loses its caption. The user explicitly intends this as a long-lived personal gift they may tweak — fragile keys are the wrong default. It also makes the committed file unreadable to a human editor (opaque ids).
+
+**Candidate B — keyed by `(level, filename)` (CHOSEN):**
+```json
+{
+  "1": {
+    "1.1.jpeg": { "sea": "...", "horror": "..." },
+    "1.2.jpeg": { "sea": "...", "horror": "..." }
+  },
+  "9": {
+    "9.1.jpeg": { "sea": "...", "horror": "..." }
+  }
+}
+```
+- The confirmed Drive naming convention is `{level}.{index}.jpeg` (REQUIREMENTS §7; verified in the test fixtures, e.g. `1.1.jpeg`). The backend **already carries the filename** on every `PhotoRef` (`PhotoRef.name`, `drive_service.py`), so this key is available with zero new Drive calls.
+- **Stable across re-upload:** as long as the re-uploaded file keeps its `{n}.{i}.jpeg` name, the caption follows it even though the Drive id changed. This is the property the gift use-case needs.
+- **Human-editable:** the committed file reads as "level → photo name → two lines," so the user can hand-edit a caption with no knowledge of Drive ids (NF-Cap6).
+
+**Chosen schema (top-level object keyed by level-id string → filename → `{sea, horror}`):**
+```jsonc
+// captions.json — single source of truth (CapR3). Keys are STRINGS (JSON).
+{
+  "<level-id>": {
+    "<filename>": { "sea": "<one-liner>", "horror": "<one-liner>" }
+  }
+}
+```
+Field rules:
+- Both `sea` and `horror` are short one-liners (length budget §11.4). A caption entry **MAY be partial or absent** — a missing filename, a missing level, or a missing `sea`/`horror` sub-key all degrade gracefully to "no caption shown for that theme" (CapR6, NF-Cap1 optional rule). Loader and payload builder MUST treat absence as the normal, non-error case (never raise, never emit an empty caption box).
+- Levels `0, 3–7` (missing fallback) carry **no entries** (CapR5 / CapQ6 lean = uncaptioned). The `missing/` images are re-rolled per request (R3) and have no stable identity, so per-image captions are impossible there; the default is simply no caption (an optional single generic per-theme placeholder is a later, trivial addition and is NOT designed in now).
+
+## 11.2 Storage + load path — RESOLVES CapQ7 / CapR3
+
+- **File + location:** a single committed **`app/captions.json`** (next to `app/main.py` / `app/drive_service.py`). Rationale: it is backend-loaded application data, not a browser asset (so NOT under `static/`, which would needlessly serve it to clients and invite scraping the whole set in one request) and not a stray repo-root file. JSON over YAML — no new dependency, mirrors the project's existing JSON payloads, and the structure is shallow.
+- **Load path: load once at startup, cache in memory** — mirrors the R2 discovery-cache model (§5.1). Add a tiny module (e.g. `app/captions.py`) exposing a cached `dict[str, dict[str, dict[str, str]]]` plus a `get_caption(level_id, filename) -> dict|None` accessor. The file is read **once** in the FastAPI `lifespan` (alongside `discover_levels(force=True)`), and **re-read on `POST /api/refresh`** so a caption edit can be picked up without a redeploy (consistent with how refresh already rebuilds discovery state).
+- **Loader contract (tolerant by design):**
+  - Missing file → log a debug note, set the cache to an **empty map**; the feature is simply inert (every image renders uncaptioned). Never raises — this keeps local/dev/CI runs and the "captions not yet written" state working (CapR6, NF-Cap5).
+  - Malformed JSON → log a warning, fall back to the empty map (fail-soft, never crash startup — same philosophy as discovery's graceful degradation).
+  - Lookups are pure dict gets keyed by `str(level_id)` then `filename`; no I/O per request (no first-paint or slide-preload cost, NF-Cap5).
+- **No database** (CapR3) and **no admin UI** (out of scope) — adding/editing a caption is a one-line edit to `app/captions.json` + a process restart or `POST /api/refresh`.
+
+## 11.3 Backend payload surface — RESOLVES CapR6 (additive, backward-compatible)
+
+**Recommendation: extend each image element with an OPTIONAL `caption` object carrying BOTH themes; let the client pick by active theme. Do NOT theme-resolve server-side.**
+
+Each image element in `GET /api/levels/{id}/photos` grows from:
+```json
+{ "file_id": "<driveId>", "url": "/api/levels/1/media/<driveId>" }
+```
+to (caption present):
+```json
+{
+  "file_id": "<driveId>",
+  "url": "/api/levels/1/media/<driveId>",
+  "caption": { "sea": "<one-liner>", "horror": "<one-liner>" }
+}
+```
+and (caption absent — unchanged from today, no `caption` key emitted):
+```json
+{ "file_id": "<driveId>", "url": "/api/levels/1/media/<driveId>" }
+```
+
+Full updated `GET /api/levels/{id}/photos` — existing level with captions:
+```json
+{
+  "level": 1,
+  "available": true,
+  "images": [
+    {
+      "file_id": "<id-a>",
+      "url": "/api/levels/1/media/<id-a>",
+      "caption": { "sea": "Built an entire kingdom out of one cardboard box.",
+                   "horror": "The architect of the box fort. Its blueprints were never found." }
+    },
+    {
+      "file_id": "<id-b>",
+      "url": "/api/levels/1/media/<id-b>"
+    }
+  ],
+  "fallback_audio": null
+}
+```
+(The second element shows the partial/absent case in the same response — the `caption` key is simply **omitted** when no entry exists; clients render it uncaptioned.) Missing-level payloads (levels 0, 3–7) are **unchanged** — one proxied fallback image, no `caption`, `fallback_audio: null`.
+
+**Why both captions, not server-resolved:** the client already knows the active theme (SSR `var theme`), and returning both lets the **theme toggle switch captions live without a refetch** — important because a visitor can toggle Horror⇄Sea on the level page and the visible slide's caption should flip instantly (CapR1, mirrors D1's no-flash model). Server-resolving by cookie would force a re-fetch on every toggle and couple the JSON endpoint to the cookie for no benefit.
+
+**The only backend change is inside `_ref` in `app/main.py`** (the per-image serializer). It gains a caption lookup keyed by `(level_id, photo.name)` against the cached map and conditionally adds the `caption` key. To do this `_ref` needs the photo's **name** — which `PhotoRef` already carries — so the change is: pass `photo` (already passed) and read `photo.name`; no `drive_service` signature change, no new Drive call, no route-signature change (the §4 route table is unchanged).
+
+**Backward-compatibility proof (CapR6, NF-Cap5):**
+- The field is **purely additive and optional**. Clients that ignore unknown keys (today's `level.html` reads only `img.url`) are unaffected.
+- **Existing tests stay green.** The `/photos` tests assert *membership/values* (`img["file_id"] in {...}`, `img["url"] == f"…/media/{img['file_id']}"`) — none assert an exact key set (no `set(img.keys()) == {"file_id","url"}`). Verified in `tests/test_backend.py` (lines ~99–103, 162–165) and `tests/test_cache.py`. Adding an optional `caption` key does not break any current assertion. **Flag for QA:** keep new caption assertions tolerant of absence; do not retrofit a strict-key assertion onto these tests.
+
+## 11.4 Frontend display — RESOLVES CapQ2 / NF-Cap4 (theme-styled, per-slide)
+
+**Recommendation: an overlaid bottom caption bar on each slide** (a theme-styled gradient scrim pinned to the bottom of the `.slide` figure), reading `image.caption[theme]`, updating naturally as the slideshow advances because each slide owns its own caption element.
+
+Markup/CSS hook plan (parallel to the existing slideshow primitives, theme-scoped like §8/§9):
+- In `renderImages(images)` (`level.html`), when building each `.slide` `<figure>`, also build a `<figcaption class="slide-caption">` **iff** `img.caption && img.caption[theme]` is a non-empty string. Append it inside the figure (so it travels with the slide; no separate sync logic needed, no regression to slide timing/scroll/dots). If absent → emit nothing (no empty box, CapR6).
+- Use `<figcaption>` inside the existing `<figure class="slide">` — semantically correct (the caption describes the figure's image) and improves accessibility for free.
+- New CSS classes (additive to `static/style.css`):
+  - `.slide-caption` — base layout: absolutely positioned to the bottom of the slide, full width, padding, a bottom-up gradient scrim (`linear-gradient(transparent → rgba(0,0,0,.7))`) so text is legible over any photo, `pointer-events:none` so it never blocks swipe/scroll, single-line by default with graceful wrap allowance on small screens.
+  - `.theme-horror .slide-caption` — gothic skin (amber `--accent` text, serif/condensed display feel matching the Horror tokens, slightly heavier scrim).
+  - `.theme-sea .slide-caption` — sunlit skin (light text or deep-azure text on a soft scrim, lighter/airier weight matching the Sea palette).
+  - These follow the §8.6 / §9.7 isolation rule: every themed rule is prefixed `.theme-horror` / `.theme-sea`; the shared `.slide-caption` base carries only neutral layout, no palette.
+- **Live theme toggle:** because the payload carries both captions, the theme toggle can re-render or re-select the caption text per slide without refetching. Simplest implementation: store `img.caption` on the figure (e.g. a `data-*` or a small JS map) and, on a theme change event, update each `.slide-caption` text from the new theme key (the toggle already triggers a repaint/reload in the §1 model, so even a full reload re-runs `renderImages` and reads the new SSR `theme` — either path works; the data being present client-side is what matters).
+- **Mobile behavior (NF-Cap4):** the overlay scrim sits at the slide bottom; on narrow viewports allow up to 2 lines then ellipsis (`-webkit-line-clamp`) so a caption never grows the slide box or pushes the dots/nav. If overlay crowding is observed on the smallest breakpoint, the documented fallback is to drop the caption **below** the stage on `≤480px` (a media-query swap, no markup change). Verify at QA.
+- **Length budget (NF-Cap4):** soft target **≤ ~70 characters** per line (hard cap ~90 before clamp). The generation step (§11.5) writes to this budget; the CSS clamp is the safety net, not the primary control.
+- **No regression:** captions live inside each existing slide figure, behind no new fetch, with `pointer-events:none`. Slide timing (3s auto-advance), prefetch/eager-preload, the audio crossfade engine, and theme isolation are untouched (NF-Cap5) — the diff is `renderImages` (add an optional `<figcaption>`) + additive `.slide-caption` CSS.
+
+## 11.5 Caption generation pipeline (design only — NOT executed in this phase)
+
+The execution phase (after sign-off) produces `app/captions.json` as follows:
+1. **Enumerate** the 50 real images across levels `1, 2, 8–17` via the running app: `GET /api/levels/{id}/photos` yields each `{file_id, url}`; the backend also knows each `name`.
+2. **View each image** through its proxy `url` (`/api/levels/{id}/media/{file_id}`) — vision-capable inspection happens here, in execution, not now.
+3. **Draft `{sea, horror}`** per image under the **NF-Cap1 tone guardrail** (Sea = warm/funny-sweet; Horror = whimsical playful-gothic, cute-spooky — never creepy, never about appearance/body, never sexualizing, never unkind; subject is a real minor + a gift).
+4. **Emit a 50×2 review table** (Markdown: image ref / level / filename / Sea line / Horror line) for the **user to edit and approve** (CapR7, NF-Cap3, CapQ5).
+5. **Only after sign-off**, write the approved set to `app/captions.json` keyed by `(level, filename)` (§11.1). SECURITY_ENGINEER / QA review the tone of every line as a content-safety gate (NF-Cap1); any line that reads creepy / body-focused / sexualizing / unkind is rejected and rewritten.
+
+This whole step is **gated on user sign-off** of CapQ3 (tone), CapQ4 (privacy/naming), and CapQ5 (review flow). No bytes of caption text are produced before that gate.
+
+## 11.6 Theme-isolation + no-regression proof (NF-Cap5)
+
+**Entire diff surface for M11:**
+1. **`app/captions.json`** (NEW, committed) — the caption data, keyed `(level, filename)`.
+2. **`app/captions.py`** (NEW) — tolerant startup loader + cached `get_caption()` accessor.
+3. **`app/main.py`** — call the loader in `lifespan` (next to discovery) and on `POST /api/refresh`; extend `_ref` to add the optional `caption` key. **No route signature changes** (§4 table unchanged).
+4. **`templates/level.html`** — `renderImages` adds an optional `<figcaption class="slide-caption">` per slide; optional toggle-driven re-select.
+5. **`static/style.css`** — additive `.slide-caption` base + `.theme-horror`/`.theme-sea` skins.
+
+Untouched: `app/drive_service.py` (no signature/behavior change — `PhotoRef.name` already exists), discovery (§5.1), the media proxy + scope guard (R1), the audio engine, the prefetch worker, both landing maps (§8/§9), and all other routes/payloads. The payload change is additive-only (§11.3). Both theme landings render byte-identical to today.
+
+## 11.7 Recommended defaults for open questions (CapQ1–CapQ7)
+- **CapQ1 (key):** **RESOLVED (architect) — `(level, filename)`.** Stable across re-upload, human-editable, available from `PhotoRef.name` with zero new Drive calls. `file_id` rejected (re-upload fragility).
+- **CapQ2 (placement):** **RESOLVED (architect, default) — overlaid bottom gradient bar (`<figcaption class="slide-caption">`), theme-styled**; documented `≤480px` fallback to below-stage if overlay crowds. Visual eyeball at QA.
+- **CapQ3 (tone guardrail — CRITICAL):** **NEEDS USER SIGN-OFF.** Confirm Horror = playful-gothic/cute-spooky & affectionate (never creepy/body-focused/sexualizing/unkind) and Sea = funny-sweet. Generation MUST NOT start without this.
+- **CapQ4 (privacy/naming):** **NEEDS USER DECISION.** The repo + Render URL + Drive are public (NF-Cap2). Architect lean: **avoid the sister's real name and any identifying detail** (school, surname, addresses); use affectionate generic phrasing.
+- **CapQ5 (review flow):** **RESOLVED (architect, default) — assistant drafts by viewing each image → 50×2 Markdown review table → user edits → approved set written to `app/captions.json`.** Confirm the review-table surface.
+- **CapQ6 (missing-level images):** **RESOLVED (architect, default) — uncaptioned.** Re-rolled fallback images have no stable identity; an optional single generic per-theme placeholder is a trivial later add, not designed now.
+- **CapQ7 (storage/format/location/load):** **RESOLVED (architect) — `app/captions.json`, keyed `(level, filename)`, loaded once at startup + cached + re-read on `POST /api/refresh`; tolerant loader (missing/malformed → empty map → feature inert).**
+
+**Resolved-with-default (no user input required to proceed):** CapQ1, CapQ2, CapQ5, CapQ6, CapQ7. **Needs an explicit USER decision before generation:** CapQ3 (tone — hard content gate) and CapQ4 (privacy/naming).
+
+## 11.8 Technical risks / flags for PM (M11) — R-Cap1…R-Cap6
+- **R-Cap1 (re-upload key fragility):** keying by `file_id` would silently drop a caption when an image is re-uploaded (new Drive id). **Mitigated by the §11.1 decision** to key by `(level, filename)` — stable as long as the re-uploaded file keeps its `{n}.{i}.jpeg` name. Residual: if the user renames a file on re-upload, its caption goes inert (degrades to no caption, never errors) — document the naming convention as the contract.
+- **R-Cap2 (privacy — public repo holds captions about a real minor):** `app/captions.json` is committed to a **public** GitHub repo and served (indirectly) via a public URL describing the user's sister (NF-Cap2). **Mitigations:** no real name, no identifying details (school/surname/address); affectionate generic phrasing only; user signs off on CapQ4. **Flag to PM/SECURITY for the data-flow review.**
+- **R-Cap3 (content-safety gate on generation — CRITICAL):** the subject is a real **minor** and the deliverable is a **gift**; the Horror "dark" tone must stay cute-spooky, never creepy/body-focused/sexualizing/unkind (NF-Cap1). Generation is **blocked until CapQ3 sign-off**, and every generated line passes a SECURITY/QA tone review. Highest-sensitivity item in M11.
+- **R-Cap4 (mobile overlay overflow):** a long caption could crowd the slide or push dots/nav on small screens (NF-Cap4). **Mitigated:** ≤~70-char budget + `-webkit-line-clamp` safety net + documented ≤480px below-stage fallback. Verify on real mobile at QA.
+- **R-Cap5 (payload-shape test fragility):** an existing `/photos` test that hard-asserted the image-object key set would break on the new optional `caption` key. **Checked — none do** (current tests assert membership/values only; `tests/test_backend.py`/`tests/test_cache.py`). Flag: keep future caption tests tolerant of caption absence; do not introduce a strict-key assertion.
+- **R-Cap6 (stale captions after Drive edit without refresh):** because the map is cached at startup, a caption edit needs a restart or `POST /api/refresh` to take effect (same model as discovery). Low severity; documented in §11.2. Note that `POST /api/refresh` is itself slated to be token-gated (R-D6) — the caption reload rides that same protected endpoint.
+
+---
+
+# 12. Build-time image baking + periodic background sync (M12 / BakeR1–7, NF-Bake1–7, BakeQ1–6, R-Bake1–8)
+
+Status: **BUILT + verified — as-built matches this design (2026-06-09; full suite 182 passed / 0 failed; pending commit).** The as-built code implements §12.1–§12.13 exactly: `scripts/fetch_images.py` is the single paced source of truth (reuses `drive_service` discovery + the shared `download_images_paced` downloader; writes `static/img/levels/{id}/{PhotoRef.name}` + the baked `missing/` set + `manifest.json`, §12.2/§12.3/§12.4); `app/drive_service.py` adds the tolerant `load_manifest`/`load_discovery` loader (manifest PRIMARY → Drive-metadata FALLBACK → empty gallery) into the existing `DiscoveryCache` shape, plus `is_safe_name`, the shared `download_images_paced`, and the single-flight `run_sync_once`/`background_sync_loop` (§12.13); `app/main.py`'s `_ref` emits the static `url` (file_id + name preserved — caption key byte-for-byte, NF-Bake4) with a baked-else-proxy guard for un-baked dev (§12.8), the `lifespan` is manifest-PRIMARY and starts/cancels the gated background sync via `_image_sync_interval()`, and `POST /api/refresh` triggers an immediate sync (§12.13.5); `render.yaml`'s `buildCommand` runs the bake and adds `IMAGE_SYNC_INTERVAL_SECONDS=1800`; `.gitignore` ignores `static/img/levels/` (NF-Bake1, D9 audio allow-list intact). **BakeQ1 = KEEP** the `/media` proxy as a guarded, non-default fallback (R1 open-proxy guard intact — the `manifest:{lid}` sentinel does NOT bypass scope); **BakeQ4 = retry/backoff + WARN/serve-partial**; BakeQ2/Q3/Q5/Q6 as designed. SECURITY (B6) APPROVED: no secret in manifest/payload/logs (NF-Bake5), no path traversal, sync off in tests. It is additive to §1–§11; the CRITICAL Drive note (§5), all decisions D1–D13, and the shipped M9/M10/M11 features are preserved. **The hard gate NF-Bake4 held: the baked filename equals `PhotoRef.name`, so the M11 `(level, filename)` caption key keeps matching byte-for-byte (all 104 captions hold).**
+
+## 12.1 Why this works on Render (the load-bearing fact)
+The throttle we are fixing is on Drive's **download** endpoint (`files.get?alt=media`) — a burst of 52 byte-downloads returned a 403 "rate-limit" page (REQUIREMENTS §14.1, the same burst recorded in M11). Drive **metadata** calls (`files.list`, `files.get` without `alt=media`) are **not** throttled the same way. Approach A moves all `alt=media` downloads to a **single, paced, build-time** pull instead of per-request bursts.
+
+Render makes this clean: the build env (`GD_API_KEY`, `GD_ROOT_FOLDER`, both `sync:false`) is available **during the build command**, and the build output is **part of the served instance image** — re-fetched only on redeploy, never on a cold-start spin-up. So the free-tier ephemeral runtime filesystem is a non-issue for baked images: they are baked once per deploy and ride the instance.
+
+## 12.2 The build-time fetch/bake script — `scripts/fetch_images.py`
+A single standalone script (NF-Bake7: one source of truth, used by both `render.yaml` and local dev). It is **not** imported by the app at runtime; it runs only at build/dev time.
+
+**Responsibilities**
+1. **Discover** (metadata only, not throttled): reuse `drive_service.discover_levels(force=True)` to build `folder_index` / `missing_folder_id` and the per-level scope lists (`level_images`, `missing_images`) — these already carry `PhotoRef{file_id, name}`. This is the same code path the app uses, so the bake set is exactly the discovered set (NF-Bake7, no second discovery implementation).
+2. **Download** each image's bytes to `static/img/levels/{id}/{PhotoRef.name}` (and the `missing/` set to `static/img/levels/missing/{PhotoRef.name}`, BakeQ2). Download via the SAME mechanism as `resolve_media` (`files.get?alt=media` with `GD_API_KEY`), but **paced** (see below) and writing to disk rather than the LRU.
+3. **Idempotent / resumable:** **skip** a file that already exists on disk with a non-zero size (so a re-run after a partial failure only pulls the remainder, and local dev re-runs are cheap). A `--force` flag re-downloads.
+4. **Write a manifest** (BakeQ3): `static/img/levels/manifest.json` capturing the discovered structure (see §12.4).
+5. **Throttle + retry** (NF-Bake2, the core of this milestone — see §12.3).
+6. **Runnable locally** (BakeQ6): `python scripts/fetch_images.py` with the developer's `.env` (`GD_API_KEY`/`GD_ROOT_FOLDER`) populates `static/img/levels/` identically to the build.
+
+**Script CLI shape (design, not implementation):**
+```
+python scripts/fetch_images.py
+    [--out static/img/levels]      # base output dir (default)
+    [--concurrency 2]              # max simultaneous alt=media downloads (default 2)
+    [--delay 0.4]                  # seconds between request starts, per worker (default 0.4s)
+    [--max-retries 5]              # retry budget per file on 403/429/5xx
+    [--force]                      # re-download even if the file already exists
+    [--skip-missing]               # do NOT bake the missing/ set (default: bake it)
+    [--manifest]                   # write manifest.json (default: on)
+```
+
+**Pacing defaults (NF-Bake2, tuned for the 52-image set + headroom):**
+- **Concurrency = 2** (a small worker pool; NOT the wide burst that tripped the 403). Single-threaded (concurrency 1) is the safest fallback if 2 still throttles.
+- **Inter-request delay = 0.4 s** per worker start (so ~5 downloads/sec aggregate at concurrency 2 — well under a burst). Jittered ±20% to avoid lockstep.
+- **Retry with exponential backoff + jitter on 403 / 429 / 5xx:** base 2 s, doubling (2, 4, 8, 16, 32 s), `--max-retries 5`. A 403/429 is treated as a throttle signal (back off and retry the SAME file), not a hard failure, until the retry budget is exhausted.
+- **Order:** download level-by-level in ascending id; this keeps logs readable and makes a partial bake deterministic (lower levels complete first).
+- These defaults bake 52 images in well under a minute at steady state while staying gentle; R-Bake5 (Render build-time limit) is verified at execution by measuring actual bake duration.
+
+**Security in the script (NF-Bake5):** `GD_API_KEY` is read ONLY via `os.environ` (reuse `drive_service._get_api_key()`); it is never written to the manifest, never embedded in a filename/path, never logged (mirror the existing log-status-only discipline in `drive_service`). The script writes only image bytes + a manifest of `{file_id, name}` (file_id is already client-visible today in the payload, so the manifest exposes nothing new — see §12.7).
+
+## 12.3 Static layout + URL scheme — RESOLVES BakeQ5 (NF-Bake4, the hard gate)
+**Layout on disk (= served paths):**
+```
+static/img/levels/
+├── manifest.json                       # build-written discovery manifest (§12.4)
+├── 1/   2.1.jpeg-style files…          # filename == PhotoRef.name, VERBATIM
+├── 2/   …
+├── 8/ … 18/                            # every available level
+└── missing/  <missing-set filenames>   # baked missing/ images (BakeQ2)
+```
+The on-disk filename is `PhotoRef.name` **verbatim** (`{n}.{i}.jpeg`, e.g. `2.1.jpeg`). Served URL = `/static/img/levels/{id}/{name}`.
+
+**Why this preserves the caption key (NF-Bake4):** M11 keys captions by `(level, filename)` where `filename == PhotoRef.name` (`app/captions.py` `get_caption(level_id, photo.name)`). Because the baked filename **is** `PhotoRef.name`, the `(level, filename)` key is byte-identical before and after baking — all 104 captions keep matching with **zero change to `captions.json` or `captions.py`**.
+
+**The `_ref` change (`app/main.py`) — the ONLY payload change (BakeR3):**
+```python
+def _ref(photo) -> dict:
+    ref = {
+        "file_id": photo.file_id,                                   # KEPT (back-compat)
+        "url": f"/static/img/levels/{level_id}/{photo.name}",       # WAS /api/levels/{id}/media/{file_id}
+        # caption block UNCHANGED — still keyed (level_id, photo.name)
+    }
+    ...
+```
+- `url` flips from the proxy path to the static path. **`file_id` and `name` stay in the payload** (back-compat for any caller; `file_id` is also the BakeQ1 fallback hook).
+- For the **missing** fallback (BakeQ2 = baked), the re-rolled image's `url` is `/static/img/levels/missing/{photo.name}`. The per-visit re-roll (R3) still happens in `get_level_photos` — it just picks from the cached `missing_images` list and the URL points at the local baked copy.
+- Payload **shape is unchanged**; only the `url` **value** changes (assert tolerantly — R-Bake7).
+
+**Odd / duplicate filenames (BakeQ5 edge):** the confirmed real set is uniform `{n}.{i}.jpeg` (REQUIREMENTS §7/§14.2), so per-level filenames are unique and filesystem-safe. The script MUST nonetheless: (a) reject/skip a filename containing a path separator or `..` (defense, NF-Bake5 — no traversal via a hostile Drive name); (b) if two images in the SAME level folder share a name (would collide on disk AND would already be a broken caption key in M11), log a loud warning and suffix the second (`name` → `name#2`) — but this also signals a caption-key problem upstream, so it is flagged, not silently swallowed. With the confirmed set this branch never triggers; it exists so a future odd upload fails visibly, not silently.
+
+## 12.4 Discovery source — RESOLVES BakeQ3 (BakeR4)
+**Recommendation: a build-written manifest is the PRIMARY source at runtime; Drive metadata discovery is the FALLBACK.** This gives a **zero-Drive-call cold start** (throttle-proof, faster spin-up on Render) while keeping the app fully functional even with NO Drive credentials at runtime (a genuine static-serving model).
+
+**`static/img/levels/manifest.json` shape (build-written):**
+```json
+{
+  "generated_at": "2026-06-09T12:00:00Z",
+  "levels": [
+    { "id": 1, "available": true,
+      "images": [ { "file_id": "<driveId>", "name": "1.1.jpeg" }, ... ] },
+    { "id": 2, "available": true, "images": [ ... ] },
+    { "id": 0, "available": false, "images": [] },
+    ...
+  ],
+  "missing": { "images": [ { "file_id": "<driveId>", "name": "m1.jpeg" }, ... ] },
+  "span": { "min": 0, "max": 18 }
+}
+```
+- It carries exactly what discovery produces: the level span (`0..max`), each available level's `{file_id, name}` image list, and the baked `missing/` set. **No `GD_API_KEY`, no folder ids** — only `file_id` + `name`, which are already client-visible today (§12.7).
+- **App read path:** a small loader in `drive_service` (mirroring `captions.py`'s tolerant-loader pattern) reads `manifest.json` at `lifespan` startup into the SAME `DiscoveryCache` shape (`folder_index` analog → "available" set, `levels` span, `level_images`, `missing_images`). The existing consumers are then UNCHANGED:
+  - `_levels_payload()` → `{id, available}` from the manifest's level list (drives F1 sealed styling, unchanged user-facing semantics, BakeR4).
+  - `get_level_photos(id)` → the manifest's `images` for an available level; the per-visit re-roll from `missing.images` for a missing level (R3 preserved).
+- **Fallback chain (resilient):** if `manifest.json` is absent or malformed (e.g. local dev that hasn't baked, or a manifest-less build), fall back to live Drive **metadata** discovery (the current `discover_levels()` path — metadata is not throttled). If THAT also fails (no creds), degrade to the empty gallery exactly as today. So the manifest is an optimization + a no-creds-runtime enabler, never a single point of failure.
+- **`POST /api/refresh` semantics (NF-Bake6):** under the manifest model, refresh **re-reads the manifest** (and re-reads captions). It does **not** download new images — new/changed images require a redeploy (re-bake). This is documented and acceptable ("won't add many more"). If the manifest is absent and refresh falls back to Drive metadata, it re-lists but still won't bake — same conclusion.
+
+## 12.5 Keep or drop the `/media` proxy — RESOLVES BakeQ1 (BakeR7)
+**Recommendation: KEEP `/api/levels/{id}/media/{file_id}` as a guarded, opt-in fallback — but it is NOT on the default request path.** The baked static URL is what `_ref` emits, so a warm gallery never calls the proxy. The proxy remains for resilience: a not-yet-baked or newly-added `file_id` (manifest says it exists, disk doesn't yet) can still resolve via Drive instead of 404-ing until the next redeploy. This pairs with the graceful build-failure policy (§12.6) and the local-dev fallback (§12.8).
+
+- **If KEPT (recommended):** `drive_service.resolve_media()`, the byte LRU, and the route all stay, and **all existing security ACs remain in force** — R1 (`file_id` validated ∈ the level's folder OR `missing/` via the cached scope set) and R6 (echo upstream `Content-Type`). The throttle path technically still exists, but it is only reached for an un-baked id (rare, single file), never a bulk burst — so it does not reintroduce the 403 risk. Consequence for R-Bake/throttle: the bulk-throttle risk is eliminated (no bursts); only a degenerate single-file fetch remains.
+- **Alternative (DROP, pure-static):** remove the route + `resolve_media()` + the byte LRU for the smallest surface. Consequence: an un-baked id 404s until redeploy, AND the build-failure policy MUST then be **fail-the-build** (§12.6) since there is no runtime safety net. Security upside: zero open-proxy surface at runtime. **Security note (NF-Bake5):** if dropped, confirm no client-reachable artifact (`file_id` in the payload/manifest) re-enables an ad-hoc proxy — it cannot, because the route itself is gone; `file_id` becomes a pure caption/back-compat token with no live endpoint behind it.
+- **Default chosen:** KEEP (resilience + clean local dev), gated so it is never the bulk path. Architect notes the DROP option is a one-line follow-up if the SECURITY_ENGINEER prefers a zero-proxy runtime surface.
+
+## 12.6 Build-failure policy — RESOLVES BakeQ4 (NF-Bake2)
+Tied to the BakeQ1 decision:
+- **With the proxy KEPT (recommended): retry-with-backoff, then WARN + serve-partial.** A file that still 403s after the full retry budget is **logged loudly and skipped**; the build **succeeds** and ships whatever baked. At runtime the manifest still lists that image; its static file is missing, so the app can fall back to the proxy for that one id (or, if the proxy is later dropped, it 404s for that one slide). This is the graceful path and is safe because the proxy backstops the gap.
+- **If the proxy is DROPPED (pure-static): retry-with-backoff, then FAIL the build.** No partial/stale deploy — a missing image has no runtime fallback, so an incomplete bake must not ship. The deploy fails, the operator re-runs (the idempotent script resumes from where it stopped), and the prior good instance keeps serving until a clean bake succeeds.
+- Either way the bake **must not** loop forever — the per-file retry budget bounds total time (R-Bake5).
+
+## 12.7 Security + back-compat proof (NF-Bake5 / NF-Bake4 — hard gates)
+- **`GD_API_KEY` never leaves the server/build (F10, veto):** the key is used only by `scripts/fetch_images.py` (build/dev) and, if BakeQ1 keeps it, by `resolve_media` (server). It is NEVER written to `static/img/levels/` (only image bytes are), NEVER in `manifest.json`, NEVER in the `/photos` payload, NEVER in any client bundle. The script logs status codes only (reusing `drive_service`'s discipline).
+- **The manifest exposes nothing new:** it contains `file_id` + `name` only. `file_id` is **already** in today's `/photos` payload (`_ref` emits it), and `name` (the filename) becomes visible in the static URL anyway. No folder ids, no key, no new data class crosses the boundary versus today.
+- **No path traversal serving static files (NF-Bake5):** files are served by FastAPI `StaticFiles` from `static/`, which already normalizes/sandboxes paths. The bake script additionally refuses to WRITE a filename containing `/`, `\`, or `..` (§12.3 edge), so a hostile Drive filename cannot escape `static/img/levels/{id}/`. `{id}` in the URL maps to a directory name that only ever exists if the build created it.
+- **Caption back-compat (NF-Bake4, hard gate):** baked filename == `PhotoRef.name` ⇒ `(level, filename)` key unchanged ⇒ all 104 M11 captions still attach. `captions.json` and `captions.py` are **untouched**. QA asserts every caption still attaches after the URL switch (R-Bake3).
+- **No regression to M8/M9/M10/M11:** routes other than the `_ref` `url` value (and the optional BakeQ1 proxy keep/drop) are unchanged; the maps, audio engine, prefetch, theme isolation are untouched (theme-agnostic change). The `/photos` payload shape is preserved (only `url` value changes — assert tolerantly, R-Bake7).
+
+## 12.8 `render.yaml` integration + local dev (NF-Bake6 / BakeQ6) + the M8 coupling
+**`render.yaml` `buildCommand`:**
+```yaml
+buildCommand: pip install -r requirements.txt && python scripts/fetch_images.py
+```
+- Build env vars `GD_API_KEY` / `GD_ROOT_FOLDER` (`sync:false`) are available at build, so the script authenticates exactly as the app does. Drive sharing must stay "Anyone with the link → Viewer" (D12 / HostQ4) for the build to read it — already a deploy precondition.
+- **Build-failure behavior** follows §12.6: under the recommended KEEP-proxy + graceful-degrade, a paced-but-still-throttled file warns and the build proceeds; under DROP-proxy it fails the build. The script's exit code encodes this (non-zero only in the fail-the-build mode).
+
+> **⚠️ M8 shared-file coupling (do NOT fight it):** `render.yaml` is **also** being edited by M8 — region `oregon → singapore` (REQUIREMENTS §12.5, HostQ5) and (separately) the `/api/refresh` token-gate is a backend change, not a `render.yaml` one. M12 only touches the **`buildCommand` line**; M8 only touches the **`region` line**. These are non-overlapping edits to the same file — coordinate the commit so both land (the PM sequences B5 against the M8 edit), but neither blocks the other. Do not revert M8's region change while editing `buildCommand`.
+
+**Local dev (BakeQ6):** run the **same** `scripts/fetch_images.py` with a local `.env` (`GD_API_KEY`/`GD_ROOT_FOLDER`) — identical bake into `static/img/levels/`. Graceful states when unbaked:
+- **Manifest present, files present:** normal — serves static (the post-bake state, prod-like).
+- **Manifest absent / dir empty:** the app falls back to live Drive **metadata** discovery (§12.4); image `url`s would then point at the static path that doesn't exist yet → the developer either runs the bake, OR (if BakeQ1 keeps the proxy) the app can emit proxy URLs in this un-baked mode. **Recommended dev ergonomics:** `_ref` checks "is this level baked?" (manifest/disk) and emits the static URL when baked, else the proxy URL when the proxy is kept — so a fresh clone with no bake still shows images via the proxy, and a baked clone shows them statically. This keeps local onboarding to "set `.env`, run `uvicorn`" with the bake as an optional speed/parity step.
+- **No creds at all:** empty gallery (exactly as today) — no crash.
+
+## 12.9 `.gitignore` rule — RESOLVES NF-Bake1 (R-Bake2, no allow-list regression)
+The baked images are **personal photos in a PUBLIC repo** — they must NEVER be committed (privacy + bloat). The current `.gitignore` is **allow-list style** (negations re-include `static/`, `static/audio/`, `static/audio/**/*.mp3`) and has **no broad `static/` ignore**, so today the baked dir would be commit-eligible. Add an **explicit, narrow ignore for the baked dir only**, placed AFTER the existing allow-list block so a later negation cannot accidentally re-include it:
+
+```gitignore
+# ── Baked level images (M12) — personal photos, build output ONLY, NEVER committed ──
+# Fetched at build time by scripts/fetch_images.py into static/img/levels/.
+# This dir is ignored AFTER the static/ allow-list so it never lands in the public repo.
+static/img/levels/
+```
+- **Why this does NOT regress the D9 audio allow-list:** the rule targets `static/img/levels/` specifically; `static/audio/` and `!static/audio/**/*.mp3` are untouched, so every committed `.mp3` stays tracked.
+- **Why it does NOT hide the map/brand assets:** `static/img/horror/`, `static/img/light/`, `static/img/logo/` are siblings of `static/img/levels/`, not under it. The rule ignores only the `levels/` subtree, so `landing-map.v2.jpg`, `landing-map.v2.webp`, and the logo stay tracked. (`static/img/light/landing-map.png` design source is likewise unaffected.)
+- **Placement matters:** put it as a NEW trailing block (after line 47's `!static/audio/**/*.mp3`) so the allow-list negations above never re-include `levels/`. A directory ignore (`static/img/levels/`) also covers `manifest.json` inside it — acceptable, since the manifest is build output and is regenerated every deploy. (If the manifest is ever wanted in-repo for a no-Drive-build, add `!static/img/levels/manifest.json` — NOT recommended, as it would couple the repo to a specific bake.)
+
+## 12.10 Recommended defaults for open questions (BakeQ1–BakeQ6)
+- **BakeQ1 (keep/drop proxy):** **KEEP** `/api/levels/{id}/media/{file_id}` as a guarded, non-default fallback (R1/R6 ACs intact); never the bulk path, so the 403 risk is gone. DROP is a clean one-line follow-up if SECURITY prefers a zero-proxy runtime.
+- **BakeQ2 (missing/ bake + freshness model):** **BAKE** the `missing/` set into `static/img/levels/missing/`; the per-visit re-roll (R3) picks from the cached local list and emits a static URL. **PLUS (user-refined freshness):** add a **periodic, change-gated, background incremental sync** (§12.13) — build-bake is the cold-start floor; a `lifespan` `asyncio` task lists Drive metadata every `IMAGE_SYNC_INTERVAL_SECONDS` (default **1800**, `0`/unset DISABLES for hermetic CI/tests) and, **only when the `file_id` set changed**, paced-downloads the delta + atomically updates `manifest.json` + reloads the in-memory scope. So new/changed images appear **without a redeploy** and **without** per-request Drive calls (user traffic stays static/Drive-free). `POST /api/refresh` runs the same path for an on-demand (token-gated) force.
+- **BakeQ3 (discovery source):** **build-written `manifest.json` as PRIMARY**, live Drive metadata as FALLBACK, empty gallery as last resort. Zero Drive calls on a normal cold start; works with no runtime creds.
+- **BakeQ4 (build-failure policy):** **retry-with-backoff (2→32 s, 5 tries), then WARN + serve-partial** (paired with the kept proxy). Switches to **FAIL-the-build** iff BakeQ1 is later chosen as DROP.
+- **BakeQ5 (filename/URL scheme):** **`static/img/levels/{id}/{PhotoRef.name}` verbatim** — filename == `PhotoRef.name` (`{n}.{i}.jpeg`), preserving the M11 caption key byte-for-byte. Hostile/colliding names are rejected/flagged loudly (§12.3), never silently mangled.
+- **BakeQ6 (local-dev source):** **same `scripts/fetch_images.py`** with a local `.env`; graceful states when unbaked (proxy URLs while the proxy is kept, else empty/placeholder). Onboarding stays "set `.env`, run `uvicorn`," bake optional for parity.
+
+## 12.11 Technical risks / flags for PM (M12) — R-Bake1…R-Bake8
+- **R-Bake1 (build still trips the 403):** **Core risk → §12.2/§12.3 pacing** — concurrency 2, 0.4 s jittered delay, exp-backoff retry on 403/429. Only `alt=media` is throttled; metadata discovery is not. QA/PM verify a clean bake of the 52-image set and measure duration (R-Bake5). If 403 persists at concurrency 2, drop to 1 and lengthen the delay.
+- **R-Bake2 (photos leak into git):** **§12.9 explicit ignore** for `static/img/levels/`, added in the same change; SECURITY (B6) confirms no photo is staged/committed and the D9 audio allow-list + map/brand assets are intact.
+- **R-Bake3 (caption breakage):** **§12.3 hard gate** — baked filename == `PhotoRef.name`; QA asserts all 104 captions still attach after the URL switch.
+- **R-Bake4 (secret exposure):** **§12.7 hard gate** — `GD_API_KEY` build/server-side only; manifest/payload/static output carry only `file_id`+`name` (already client-visible). SECURITY veto.
+- **R-Bake5 (Render build limits):** **Verify at execution** — measure paced bake duration for 52 images; tune concurrency/delay if near a build timeout; small set + "won't add many more" makes this low.
+- **R-Bake6 (stale images without redeploy):** **RESOLVED by §12.13 (no longer redeploy-only)** — the periodic background change-gated sync pulls new/changed images within ~30 min (or immediately via `POST /api/refresh`) without a redeploy, paced so it never bursts. The build-bake remains the cold-start floor. (Prior "redeploy-only; `/api/refresh` never downloads" stance is superseded; `/api/refresh` now triggers an immediate sync — §12.13.5.)
+- **R-Bake7 (test fragility):** **§12.3 note** — tests that hard-assert the proxy `url` value must move to the static scheme; assert the `url` shape/prefix (`/static/img/levels/{id}/`) tolerantly, not the exact proxy path. Cross-check `tests/test_backend.py` / `tests/test_cache.py` / `tests/test_captions.py`.
+- **R-Bake8 (background sync adds runtime Drive metadata calls + must be hermetic in tests):** the §12.13 sync introduces runtime Drive activity that the pure build-bake did not — (a) a cheap **metadata** `files.list` every `IMAGE_SYNC_INTERVAL_SECONDS` (~30 min; not throttled, so cheap, but note it; user traffic stays Drive-free), and (b) paced `alt=media` delta downloads only on a change. **Mitigations:** the interval env defaults to 1800 but **MUST be `0` (disabled) in local/CI/pytest** so the suite stays hermetic and never polls Drive (the task is not even created at `0`/unset); the metadata-only change-gate guarantees zero downloads on the common no-change tick; the paced downloader + single-flight lock + catch-all prevent bursts/overlap/crashes; and the runtime now needs `GD_API_KEY`/`GD_ROOT_FOLDER` (already set in Render, no new exposure — §12.7/§12.13.6). **Flag to SECURITY** for the data-flow review (runtime now makes outbound Drive calls + holds the key live; the on-demand sync rides the token-gated `/api/refresh`).
+
+## 12.12 Diff surface for M12 (what changes)
+1. **`scripts/fetch_images.py`** (NEW) — the paced build-time bake script + manifest writer (§12.2). Reuses `drive_service` discovery.
+2. **`app/drive_service.py`** — add a tolerant `manifest.json` loader feeding the existing `DiscoveryCache` shape, with live-metadata fallback (§12.4). `resolve_media` + byte LRU KEPT (BakeQ1) as a guarded fallback. **Factor the paced downloader** (concurrency/jitter/backoff, §12.3) so both `scripts/fetch_images.py` and the §12.13 background sync reuse one implementation (NF-Bake7).
+3. **`app/main.py`** — `_ref` emits the static `url` (file_id + name preserved); optional baked-vs-proxy URL selection for un-baked local dev (§12.8). `lifespan` starts/cancels the **periodic background sync `asyncio` task** (§12.13) when `IMAGE_SYNC_INTERVAL_SECONDS > 0`. `POST /api/refresh` re-reads the manifest/captions AND triggers an **immediate sync** via the same single-flight code path (§12.13.5).
+4. **`render.yaml`** — `buildCommand` adds `&& python scripts/fetch_images.py` (coordinate with M8's region edit — §12.8). Runtime env already carries `GD_API_KEY`/`GD_ROOT_FOLDER` (§12.13.6, no new secret); optionally surface `IMAGE_SYNC_INTERVAL_SECONDS` (default 1800; set `0` for any non-Render/CI env to disable polling).
+5. **`.gitignore`** — explicit `static/img/levels/` ignore (§12.9); the background sync writes into this same ignored dir, so no new ignore rule is needed.
+6. **`static/img/levels/`** (build output + sync target, GIT-IGNORED) — baked images + `manifest.json`, updated in place by the background sync.
+7. **Tests/CI** — `IMAGE_SYNC_INTERVAL_SECONDS` unset/`0` in the suite so the sync task is never created (hermetic — R-Bake8); QA may unit-test the change-gate + delta logic with a mocked Drive directly, not via the live loop.
+8. **Docs** — this §12 + README bake/local-dev/freshness notes (background sync + the env flag); QA updates URL assertions tolerantly.
+
+**Untouched:** `app/captions.json` / `app/captions.py` (caption key preserved), both landing maps (§8/§9), the audio engine, prefetch, theme isolation, M8's `/api/refresh` token-gate + region edit (independent), and all routes other than the `_ref` `url` value (+ the optional proxy keep/drop).
+
+## 12.13 Periodic background image sync — RESOLVES BakeQ2 (refined: freshness without redeploy)
+
+**Decision (BakeQ2, user-refined):** keep build-time bake as the **cold-start floor**, and ADD a periodic, change-gated, background **incremental sync** so new/changed images appear **without a redeploy** — and **without** per-request Drive calls and **without** the burst that trips the 403. Verbatim user intent: *"we can use a list every half an hour — if count changes then only refresh in background."* This supersedes R-Bake6's "redeploy-only" stance (see updated R-Bake6 + new R-Bake8); the build-bake / static-serving / caption-key / manifest decisions (§12.2–§12.9) are **unchanged** — the sync only writes into the SAME `static/img/levels/` layout and updates the SAME `manifest.json`.
+
+**1. Trigger / loop (lifespan-owned background task).** A single `asyncio` background task is started in the FastAPI `lifespan` startup, alongside the existing discovery + caption load, and cancelled cleanly on `lifespan` shutdown. The loop:
+- Sleeps an **initial delay** (e.g. ~60 s) before its first tick so it never competes with cold-start discovery/caption-load/first-request warmup (the build-baked set already covers t=0).
+- Then ticks every `IMAGE_SYNC_INTERVAL_SECONDS` (env, default **1800** = 30 min). **`0` or unset DISABLES the task entirely** — the task is never created, so local dev, CI, and the pytest suite never poll Drive (hermetic; see §12.13.4 + R-Bake8). This mirrors the `os.environ.get(...)`-with-default discipline already used for config in `drive_service`.
+- The interval/initial-delay are the only new config; no new route, no new payload field.
+
+**2. Change detection (cheap, metadata-only — the "list every half hour").** Each tick runs the **metadata path ONLY** — `discover_levels(force=True)` + the per-level `files.list` it already performs — which is **not** the throttled endpoint (§12.1: only `files.get?alt=media` bursts trip the 403). From that it computes the **current discovered set**: `level → {file_id…}` for every available level, plus the `missing/` set. It compares against the currently-loaded **`manifest.json`** scope:
+- **Signal (recommended):** compare the **set of `file_id`s per level** (and for `missing/`). This is robust to swaps/replacements where the count is unchanged but an image was replaced. The user's "if count changes" is honored as a **fast pre-check**: if the per-level counts AND the `missing/` count all match, short-circuit to the set comparison (usually also equal → no-op); a count delta is a definite change. Net: **count delta OR set delta ⇒ changed; otherwise no-op (zero downloads).**
+- An **unchanged** tick does nothing but the cheap metadata list — no `alt=media`, no disk writes, no manifest rewrite, no in-memory reload.
+
+**3. Delta download (paced, background, atomic).** Only on a detected change:
+- Compute the delta: `added/changed ids = current − manifest`, `removed ids = manifest − current` (per level + `missing/`).
+- Download ONLY the added/changed `file_id`s using the **SAME paced downloader** as `scripts/fetch_images.py` (§12.2/§12.3: concurrency ≈ 2, 0.4 s ±20% jittered inter-request delay, exponential backoff 2→32 s on 403/429/5xx, bounded retry budget). So even a sync NEVER bursts — it is the build pacing applied incrementally, on a handful of files at a time. (Design intent: the paced downloader is factored so both the build script and the runtime sync call one implementation — NF-Bake7's "one source of truth" extended to the sync; no second downloader.)
+- **Never serve a half-written file:** download each file to a temp name in the target dir, then atomically `rename` into `static/img/levels/{id}/{name}` (or `missing/{name}`) on success. A failed/throttled file leaves the previous file (if any) untouched and is retried next interval.
+- **Remove deleted ids:** unlink the static files for `removed ids` after the manifest swap (so a reader never sees a manifest entry whose file was just deleted).
+- **Atomic manifest update + in-memory reload:** write the new `manifest.json` to a temp file and `rename` over the old one, then reload the in-memory discovery/caption scope (the SAME loader path used at `lifespan` startup and by `POST /api/refresh`, §12.4) so `/api/levels` and `/api/levels/{id}/photos` immediately reflect the new set. Captions are re-read on the same reload (a new image simply has no caption until `captions.json` is updated — CapQ6 behavior, no error).
+
+**4. Safety / robustness (the task must NEVER crash the app).**
+- **Single-flight lock:** an `asyncio.Lock` (or a "sync in progress" flag) prevents overlapping ticks AND overlap with a `/api/refresh`-triggered sync (§12.13.5). If a tick is somehow still running when the next fires, the new tick skips (logs "sync still running, skipping").
+- **Catch-all per tick:** the entire tick body is wrapped so ANY exception (Drive 403/429 on the delta downloads, network error, malformed metadata, disk error) is **caught + logged (status/shape only, never the key — §12.7) and swallowed**; the loop then sleeps and retries next interval. A 403 on the delta leaves existing files + the existing manifest intact and tries again later — never a partial/corrupt manifest, never a crashed event loop.
+- **Failure floor:** the build-baked set (+ last good synced state) is always the floor; a sync can only ADD freshness, never degrade below the cold-start set. On **Render free spin-down**, the task pauses with the instance and resumes on wake (the next tick after wake does a cheap list; the build-baked set covers the cold start) — no special handling needed.
+
+**5. Relationship to `POST /api/refresh`.** `/api/refresh` triggers an **immediate** sync via the **same code path** (acquire the single-flight lock → metadata list → change-gate → paced delta download → atomic manifest swap → in-memory reload) IN ADDITION TO re-reading the manifest + captions it already does (§12.4). So the user can **force** an update on demand instead of waiting for the next 30-min tick. Because it shares the single-flight lock, a manual refresh and a scheduled tick never collide. **Coupling note:** `/api/refresh` is slated to be **token-gated** (M8 / R-D6); the on-demand sync therefore rides that same protected, authenticated endpoint — an anonymous caller cannot trigger Drive downloads. (If `IMAGE_SYNC_INTERVAL_SECONDS=0` disables the periodic loop, `/api/refresh` can still perform a one-shot sync on demand, since it is an explicit operator action, not a poll — recommended behavior; document it.)
+
+**6. Runtime-credentials implication (data-flow change vs a pure build-bake).** A pure build-bake needs `GD_API_KEY` / `GD_ROOT_FOLDER` only at **build** time. The background sync means the **RUNTIME also needs** `GD_API_KEY` / `GD_ROOT_FOLDER` (already set in Render as `sync:false` env, §12.8 — no new secret, no new exposure surface; the key still NEVER leaves the server and is NEVER written to the manifest/payload/static output, §12.7). Crucially, this does **not** reintroduce per-request Drive traffic: **user-facing requests still serve plain static files (Drive-free)**; the only runtime Drive calls are (a) the cheap periodic **metadata** list and (b) the **paced delta downloads that happen only when the set changed**. The §12 data-flow is therefore: *build-bake (floor) → static serving for all user traffic → background metadata poll every 30 min → paced incremental download + manifest/scope reload only on change.*
+
+### 12.13 summary
+Build-bake remains the cold-start floor; a `lifespan`-owned `asyncio` task lists Drive metadata every `IMAGE_SYNC_INTERVAL_SECONDS` (default 1800, **0/unset disables** for hermetic local/CI/tests), change-gates on the **per-level `file_id` set** (count as a fast pre-check), and on a change only, paced-downloads the delta into the static dir + atomically swaps `manifest.json` and reloads the in-memory discovery/caption scope. It is single-flight, crash-proof (catch-all → retry next interval), and `POST /api/refresh` runs the same path for an on-demand, token-gated force. No per-request Drive calls are added; static serving stays Drive-free. **No change to the build-bake, static-serving, manifest-PRIMARY, or `(level, filename)` caption-key decisions (§12.2–§12.9) — the sync writes into the SAME layout/manifest and reuses the SAME paced downloader + loader.**

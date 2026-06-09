@@ -101,6 +101,56 @@ def reset_cache():
     drive_service._cache = drive_service.DiscoveryCache()
 
 
+@pytest.fixture(autouse=True)
+def isolate_bake(monkeypatch, tmp_path):
+    """Make the whole suite hermetic w.r.t. a real on-disk bake (test isolation).
+
+    The documented local flow (``python scripts/fetch_images.py``) WRITES
+    ``static/img/levels/manifest.json`` + baked image files. If that exists, the
+    lifespan's ``load_discovery`` would load it as PRIMARY and silently override
+    the mocked Drive tree every test relies on (this is what false-greened QA).
+
+    Point the manifest path and baked-image dir (both in ``drive_service`` and
+    the ``main`` module's ``LEVELS_IMG_DIR`` used by ``_ref``) at a NONEXISTENT
+    tmp path for EVERY test. ``load_manifest`` now resolves ``MANIFEST_PATH`` at
+    call time, so this redirect is honoured: no test ever reads a real manifest
+    or a real baked file, regardless of any local bake on disk.
+
+    Also installs a network-refusing default for ``list_children`` so that even
+    a test which forgets to patch Drive (or the lifespan discovery path when
+    creds happen to be present) can NEVER reach live Drive. Tests that need a
+    working Drive (``patched_drive``) or a custom guard re-patch it afterwards;
+    monkeypatch layering lets their patch win.
+    """
+    # Force dummy creds for EVERY test, regardless of the ambient environment.
+    # This makes the suite hermetic in all three states:
+    #   - State A (GD_* explicitly empty in CI) -> the mocked discovery path runs
+    #     instead of being skipped for "no config".
+    #   - real .env present -> the test process can NEVER use real creds to reach
+    #     live Drive (the live-Drive leak), since the patched list_children below
+    #     is the only network funnel and these creds are placeholders.
+    # IMAGE_SYNC_INTERVAL_SECONDS is forced empty so the background sync stays
+    # disabled in tests no matter what the ambient env / .env sets.
+    monkeypatch.setenv("GD_API_KEY", "TEST-DUMMY-KEY-do-not-use")
+    monkeypatch.setenv("GD_ROOT_FOLDER", "ROOT_FOLDER_ID")
+    monkeypatch.setenv("IMAGE_SYNC_INTERVAL_SECONDS", "")
+
+    nonexistent_levels = tmp_path / "no-bake" / "levels"
+    nonexistent_manifest = nonexistent_levels / "manifest.json"
+    monkeypatch.setattr(drive_service, "LEVELS_IMG_DIR", nonexistent_levels)
+    monkeypatch.setattr(drive_service, "MANIFEST_PATH", nonexistent_manifest)
+    monkeypatch.setattr(main_module, "LEVELS_IMG_DIR", nonexistent_levels)
+
+    async def _no_network(folder_id, client):  # pragma: no cover - safety net
+        raise AssertionError(
+            "Drive list_children reached live network in a test; a fixture must "
+            "patch it (the suite is hermetic)."
+        )
+
+    monkeypatch.setattr(drive_service, "list_children", _no_network)
+    yield
+
+
 @pytest.fixture
 def patched_drive(monkeypatch, drive_tree):
     """Patch ``list_children`` to serve ``drive_tree`` (no real network).

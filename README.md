@@ -8,7 +8,7 @@ An interactive web gallery with a **dynamically-scaled** number of levels (0 →
 | `#0D0D0D` obsidian + `#FFB000` molten amber, shadowed vignette | `#E0F2FE`/`#0284C7` azures + warm sand, white coral, palm green |
 | Continuous atmospheric horror soundtrack | Bright, relaxing ocean/acoustic ambient |
 
-> **Status:** ✅ Implemented. The backend (FastAPI Drive proxy), frontend (SSR Jinja2 + dual themes + audio engine), and the full test suite (**140 passed**) are complete and security-audited. Both landings are now illustrated maps with clickable hotspots (M9 Horror, M10 Sea). Deploy config (`render.yaml` / `Procfile`) is ready; live deployment (M8) is the remaining step. See [Project Status](#-project-status). *(Note: real Google Drive assets and the `.mp3` audio files are still placeholders.)*
+> **Status:** ✅ Implemented. The backend (FastAPI + build-baked static images, Drive proxy as fallback), frontend (SSR Jinja2 + dual themes + audio engine), and the full test suite (**182 passed**) are complete and security-audited. Both landings are illustrated maps with clickable hotspots (M9 Horror, M10 Sea); images now ship **baked at build into `static/img/levels/` and served as static files**, with a 30-min background sync for new images (M12). Deploy config (`render.yaml` / `Procfile`) is ready; live deployment (M8) is the remaining step. See [Project Status](#-project-status). *(Note: real Google Drive assets and the `.mp3` audio files are still placeholders.)*
 
 ---
 
@@ -18,10 +18,12 @@ An interactive web gallery with a **dynamically-scaled** number of levels (0 →
 - **Session-persistent theme** — stored via cookie + `sessionStorage`; SSR reads the cookie for a flash-free first paint (default: Horror).
 - **Dynamic level discovery** — both landing maps render a fixed illustrated layout of 19 numbered hotspots; discovery of whatever numbered folders exist in Google Drive (5, 12, 19… all work) drives each hotspot's **availability** styling (sealed/sunken for missing levels), not the layout itself.
 - **Per-level pages** at `/level/{id}`, styled as a *room* (Horror) or a *beach* (Sea).
-- **Secure image proxy** — level images are fetched from Google Drive and streamed as bytes by the backend; the browser **never** receives the Google Drive API key.
+- **Build-baked static images** — level images are downloaded from Google Drive **once at build time** (paced to avoid Drive's download throttle) into `static/img/levels/` and served thereafter as **plain static files** — no per-request Drive proxy on the hot path. The Drive image proxy is kept only as a guarded fallback for not-yet-baked / brand-new images, and the Google Drive API key **never** reaches the browser.
+- **Background image sync** — a periodic background task checks Drive metadata every 30 min (`IMAGE_SYNC_INTERVAL_SECONDS`, default 1800; `0`/unset disables it) and, only when images actually changed, paced-downloads the delta and atomically updates the manifest — so new images appear **without a redeploy**, while user traffic stays static/Drive-free. `POST /api/refresh` forces an immediate sync.
 - **Missing-level fallback** — if a numbered folder is absent (or empty), the backend serves 1 random image from the Drive `missing/` folder; the level's audio is a random **local per-theme track** (`static/audio/{theme}/`) chosen client-side, so a missing level never fails over absent Drive audio.
+- **Per-image dual-theme captions** — every real gallery image carries two one-line captions (Sea = light & funny, Horror = playful-gothic); the active theme selects which one shows, rendered per-slide beneath the slideshow image. Captions live in a committed `app/captions.json` (keyed by `(level, filename)`) and are optional/back-compatible — an image with no caption renders exactly as before. Subject is referred to as "Chudail" (no real name).
 - **Audio crossfade engine** — landing-page global ambient fades out while a per-level track fades in (and back), auto-play-safe.
-- **Fast by default** — images are cached in-memory on the server (bounded LRU) and sent with long-lived `Cache-Control`/`ETag` headers so the browser caches them too; the level page shows a slow, scrollable **slideshow** (3s/slide) and the landing page **prefetches** all level images in the background, so navigation is near-instant after first load (~340× faster on a cache hit). The per-level scope check is served from cache, so serving an image no longer re-lists Drive.
+- **Fast by default** — level images are served as **build-baked static files** (no per-request Drive round-trip on the hot path) with long-lived `Cache-Control`/`ETag` headers; discovery reads a build-written `manifest.json` so a cold start makes **zero Drive calls**. The level page shows a slow, scrollable **slideshow** (3s/slide) and the landing page **prefetches** all level images in the background, so navigation is near-instant after first load. (The guarded Drive proxy fallback still uses a bounded in-memory LRU for any not-yet-baked image.)
 
 ---
 
@@ -31,7 +33,7 @@ An interactive web gallery with a **dynamically-scaled** number of levels (0 →
 |---|---|
 | Backend | **FastAPI** + **Uvicorn**, **Jinja2** SSR, **httpx** (Drive client) |
 | Frontend | Semantic HTML5, **Tailwind CDN** + custom `style.css` (`.theme-horror` / `.theme-sea`), native `<audio>` |
-| Media | Images → **Google Drive** (proxied); audio → **GitHub repo** (`static/audio/`, served static) |
+| Media | Images → **Google Drive**, baked at build into `static/img/levels/` + served static (proxy as fallback); audio → **GitHub repo** (`static/audio/`, served static) |
 | Hosting | Render / Railway (free tier), secrets via environment variables |
 
 ---
@@ -73,13 +75,18 @@ Full design lives in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/REQUIRE
 ```
 island/
 ├── app/
-│   ├── main.py            # routes, theme cookie, dynamic level loop, Jinja2
-│   └── drive_service.py   # Drive client, child discovery, missing/ fallback
+│   ├── main.py            # routes, theme cookie, manifest-first discovery, gated background sync, Jinja2
+│   ├── drive_service.py   # Drive client, manifest loader, paced downloader, child discovery, missing/ fallback
+│   └── captions.json      # per-image dual-theme captions, keyed by (level, filename)
+├── scripts/
+│   └── fetch_images.py    # build-time image bake → static/img/levels/ + manifest.json (paced)
 ├── static/
 │   ├── style.css          # .theme-horror / .theme-sea
 │   ├── img/
 │   │   ├── horror/        # landing-map.v2.jpg (Horror landing art)
-│   │   └── light/         # landing-map.v2.webp (Sea landing art; landing-map.png = design source)
+│   │   ├── light/         # landing-map.v2.webp (Sea landing art; landing-map.png = design source)
+│   │   ├── logo/          # brand asset
+│   │   └── levels/        # ⚠️ build-generated, git-IGNORED — baked level photos + manifest.json (never committed)
 │   └── audio/
 │       ├── global/        # horror_ambient.mp3, sea_ambient.mp3
 │       ├── horror/        # level_0.mp3 … level_18.mp3
@@ -103,6 +110,7 @@ The app reads two environment variables (never commit the key):
 |---|---|---|
 | `GD_API_KEY` | **secret** | Google Drive API key. Read via `os.environ`; kept server-side only. |
 | `GD_ROOT_FOLDER` | config | ID/link of the parent Drive folder whose children are the numbered subfolders `0..18` + `missing/`. |
+| `IMAGE_SYNC_INTERVAL_SECONDS` | config | How often the background sync checks Drive for new/changed images (default **1800** = 30 min). **`0` or unset disables** the sync entirely — keep it unset locally / in CI so the suite stays hermetic. Set in `render.yaml` for prod. |
 
 > The parent Drive folder must be shared **"Anyone with the link → Viewer"** so a plain API key can read it. Copy `.env.example` to `.env` and fill in your values.
 
@@ -131,6 +139,14 @@ uvicorn app.main:app --reload
 
 Open http://localhost:8000.
 
+> **Level images (build-baked):** in production the images are baked into `static/img/levels/` at build time and served as static files. Locally this directory is **git-ignored and empty on a fresh clone** — the app still runs, falling back to the guarded Drive proxy for images. To bake them locally for static-parity (and to refresh after the Drive download throttle clears), run:
+>
+> ```bash
+> python scripts/fetch_images.py        # paced download → static/img/levels/ + manifest.json
+> ```
+>
+> This is the **same script** `render.yaml` runs in its `buildCommand`. New/changed images then flow in via the 30-min background sync (or `POST /api/refresh`) — no redeploy needed.
+
 > The repo-root `.env` is **auto-loaded** at startup (via `python-dotenv`) — no manual
 > `export` needed. Real environment variables always take precedence over `.env`, and a
 > missing `.env` is a no-op (so CI and production, which set vars on the host, are unaffected).
@@ -142,7 +158,7 @@ Open http://localhost:8000.
 The suite is hermetic (Drive is fully mocked — no network, no real key):
 
 ```bash
-pytest tests/            # 58 passed
+pytest tests/            # 182 passed
 # or, without activating the venv:
 .venv/bin/python -m pytest tests/ -q
 ```
@@ -174,7 +190,7 @@ Both platforms build from `requirements.txt` and run the start command above. Th
 3. When prompted (both vars are declared `sync: false`), set **Environment** values:
    - `GD_API_KEY` — your Google Drive API key (secret).
    - `GD_ROOT_FOLDER` — the parent folder ID/link holding `0..18` + `missing/`.
-4. Deploy. Health check hits `/api/levels`. Visit the assigned `*.onrender.com` URL.
+4. Deploy. The build runs `python scripts/fetch_images.py` to **bake the level images** into `static/img/levels/` using the build-time `GD_API_KEY`/`GD_ROOT_FOLDER` (so the Drive folder must already be shared "Anyone with link → Viewer"). `IMAGE_SYNC_INTERVAL_SECONDS=1800` (declared in `render.yaml`) turns on the 30-min background sync so new images appear without a redeploy. Health check hits `/api/levels`. Visit the assigned `*.onrender.com` URL.
 
 ### Railway (`Procfile`)
 
@@ -205,7 +221,7 @@ This repo is engineered with [Claude Code](https://claude.com/claude-code) using
 
 ## 📊 Project Status
 
-Build is **complete** through M7 plus the M9 Horror and M10 Sea landing-map redesigns; deploy config is ready (M8 = live verification). Code uses placeholder Drive assets / `.mp3` files. Milestones:
+Build is **complete** through M7 plus the M9 Horror / M10 Sea landing-map redesigns, the M11 dual-theme captions, and the M12 build-time image baking + background sync (full suite **182 passed**); deploy config is ready (M8 = live verification). Code uses placeholder Drive assets / `.mp3` files. Milestones:
 
 - [x] **M0 — Discovery** — dual-theme PRD, requirements, architecture, and plan documented
 - [x] **M1 — Scaffold & secure** — file tree, `requirements.txt`, `.env.example`, hardened `.gitignore`, audio tree
@@ -218,12 +234,14 @@ Build is **complete** through M7 plus the M9 Horror and M10 Sea landing-map rede
 - [ ] **M8 — Deploy** — Render/Railway config committed (`render.yaml` / `Procfile`); live verification pending
 - [x] **M9 — Horror landing redesign** — replaced the Horror door grid with a full-bleed illustrated haunted map; each of the 19 locations is a %-positioned clickable hotspot to `/level/{id}` (sealed styling for unavailable levels), plus drifting ghost/silhouette atmosphere. Supersedes the original "restyle-only / keep door grid" plan (HR3) and the pure-CSS approach (HQ1).
 - [x] **M10 — Sea (Light) landing map** — replaced the Sea dynamic island grid with a full-bleed illustrated **archipelago map** (`static/img/light/landing-map.v2.webp`, 214 KB WebP), mirroring the M9 Horror treatment; all 19 island locations are %-positioned clickable hotspots to `/level/{id}` with sealed/sunken styling for unavailable levels and name-aware `aria-label`s ("Level 5 — Prison"). The old island-grid markup is deleted (no mobile grid fallback; pan-to-fit on mobile). Frontend-only — Horror landing, backend, routes, payloads, audio, and deploy config are byte-unchanged. **After M10, both themes are map-based.** Full suite 140 passed. (Supersedes M4's "Island Map/Grid" Sea layout.) *Follow-ups (2026-06-09): missing-level fallback audio is now a random local per-theme track (REQUIREMENTS §11); both landings have ambient border decorations — Horror drifting ghosts + twinkles + shooting stars, Sea balloons + gulls + clouds — all decorative (`aria-hidden`, `pointer-events:none`) and frozen under `prefers-reduced-motion`.*
+- [x] **M11 — Image captions (dual-theme)** — every real gallery image (52 images across levels 1, 2, 8–18) gets two one-line captions (Sea funny-sweet + Horror playful-gothic = 104 total), shown per-slide in the level slideshow and selected by the active theme. Captions live in a committed `app/captions.json` keyed by `(level, filename)`, loaded by `app/captions.py` (startup-cached, re-read on `POST /api/refresh`); `main.py`'s `_ref` adds an optional, backward-compatible `caption:{sea,horror}` per image (omitted when absent → renders as before). `level.html` renders a theme-scoped `<figcaption class="slide-caption">` via `textContent` (no injection). Subject referred to as "Chudail" (no real name). Full suite 156 passed. Backend route/payload backward-compatible — M8 deploy unaffected.
+- [x] **M12 — Build-time image baking + background sync** — level images are downloaded from Drive **once at build time** by `scripts/fetch_images.py` (paced — bounded concurrency + jittered delay + exp-backoff — to avoid Drive's `alt=media` download throttle) into `static/img/levels/{id}/{filename}` (filename preserved so M11 captions still match) plus a `manifest.json`; the app serves them as **static files** (`/api/levels/{id}/photos` `url` switches from the `/media/{file_id}` proxy path to `/static/img/levels/{id}/{filename}`, `file_id`+`name`+`caption` preserved). Discovery reads the manifest **PRIMARY** → Drive-metadata **FALLBACK** → empty-gallery, so a cold start makes zero Drive calls. The `/media` proxy is **kept as a guarded fallback** for not-yet-baked images. A periodic **background sync** (`IMAGE_SYNC_INTERVAL_SECONDS`, default 1800s; `0`/unset disables) checks Drive metadata every 30 min and paced-downloads only the delta on a change → new images without a redeploy; `POST /api/refresh` forces it. `static/img/levels/` is **git-ignored** (personal photos, build output only). The same script runs in `render.yaml`'s `buildCommand`. Full suite **182 passed** (Drive mocked, sync off in tests). Backend route/payload backward-compatible — M8 deploy unaffected beyond the additive `buildCommand` + env.
 
 ---
 
 ## 🔐 Security
 
-- `GD_API_KEY` is read only from the environment and **never** leaves the server — the browser proxies image bytes through the backend.
+- `GD_API_KEY` is read only from the environment and **never** leaves the server — it is used by the build-time bake script and the guarded proxy fallback only; it is never written to the static output, `manifest.json`, the API payload, the logs, or any client bundle.
 - `.env` is git-ignored; only `.env.example` (with empty fill-in stubs) is committed.
 - Every file is audited by the `security-engineer` agent before it is frozen.
 

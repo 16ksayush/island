@@ -45,3 +45,11 @@ Thumbs.db
 !static/
 !static/audio/
 !static/audio/**/*.mp3
+
+# ── Baked level images (M12) — personal photos, build output ONLY, NEVER committed ──
+# Fetched at build time (and by the runtime background sync) by
+# scripts/fetch_images.py into static/img/levels/. This dir is ignored AFTER
+# the static/ allow-list so a negation above never re-includes it. Targets ONLY
+# static/img/levels/ — static/img/{horror,light,logo} brand/map assets and the
+# static/audio/**/*.mp3 allow-list are siblings/unaffected (§12.9, NF-Bake1).
+static/img/levels/

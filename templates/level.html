@@ -9,7 +9,7 @@
     </title>
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/style.css?v=5" />
+    <link rel="stylesheet" href="/static/style.css?v=6" />
   </head>
 
   <body class="theme-{{ theme }} min-h-screen">
@@ -210,6 +210,24 @@
               (theme === "sea" ? "Island" : "Room") +
               " " + levelId + " — image " + (idx + 1);
             fig.appendChild(el);
+
+            // M11: per-slide caption (optional, theme-picked, graceful absence).
+            // img.caption (if present) is { sea, horror }; pick the line for the
+            // SSR-fixed active theme. Theme is fixed per page load (D1 SSR), so
+            // picking here is sufficient — no live re-pick needed. We use
+            // textContent (NOT innerHTML): these are user-data strings, so this
+            // forecloses any markup injection. Absent caption -> render nothing
+            // (no empty box), so uncaptioned images look exactly as before.
+            if (img.caption) {
+              var line = theme === "sea" ? img.caption.sea : img.caption.horror;
+              if (line) {
+                var cap = document.createElement("figcaption");
+                cap.className = "slide-caption";
+                cap.textContent = line; // user data — never innerHTML
+                fig.appendChild(cap);
+              }
+            }
+
             track.appendChild(fig);
             slides.push(fig);
 

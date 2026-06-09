@@ -12,7 +12,7 @@ services:
     plan: free
     region: oregon            # adjust as needed (oregon | frankfurt | singapore | ohio | virginia)
     branch: main
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python scripts/fetch_images.py
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     autoDeploy: true
     healthCheckPath: /api/levels
@@ -27,3 +27,9 @@ services:
       # left blank here so the app degrades gracefully until it's configured.
       - key: GD_ROOT_FOLDER
         sync: false
+      # CONFIG — background image-sync interval (M12 §12.13). 1800s = re-check
+      # Drive (metadata only) every 30 min and bake any new/changed images in
+      # the background, so new photos appear without a redeploy. Set 0 to disable.
+      # Unset locally/in CI keeps the suite hermetic (no background polling).
+      - key: IMAGE_SYNC_INTERVAL_SECONDS
+        value: "1800"

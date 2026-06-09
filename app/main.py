@@ -19,7 +19,9 @@ GD_ROOT_FOLDER are unset or Drive is unreachable (discovery degrades to empty).
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -28,7 +30,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import drive_service
+from app import captions, drive_service
 from app.drive_service import DriveError
 
 logger = logging.getLogger("archive19.main")
@@ -54,19 +56,82 @@ except ImportError:
 DEFAULT_THEME = "horror"  # D3
 VALID_THEMES = {"horror", "sea"}
 
+# Baked level-image dir (M12 §12.3). The static `url` is emitted only when the
+# baked file is present here; otherwise `_ref` falls back to the proxy URL.
+LEVELS_IMG_DIR = STATIC_DIR / "img" / "levels"
+
+
+def _image_sync_interval() -> int:
+    """Read ``IMAGE_SYNC_INTERVAL_SECONDS`` (§12.13). 0/unset/invalid -> 0.
+
+    A return of 0 means the periodic background sync is DISABLED — the task is
+    never created, so local dev, CI, and the pytest suite never poll Drive
+    (hermetic — R-Bake8). Render sets a positive value (e.g. 1800) to enable it.
+    """
+    raw = os.environ.get("IMAGE_SYNC_INTERVAL_SECONDS", "")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return value if value > 0 else 0
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Build the discovery cache once at startup (R2).
+    """Build the discovery cache once at startup (R2 / §12.4).
 
-    Never crash on a failed discovery — the app must still serve pages so that
-    local runs and tests work without live Drive access.
+    Discovery source order (§12.4): build-written ``manifest.json`` is PRIMARY
+    (zero Drive calls at cold start, no runtime creds needed); if absent or
+    malformed, fall back to live Drive **metadata** discovery; if that also
+    fails, the empty gallery (exactly as today). Never crash on a failed
+    discovery — the app must still serve pages so local runs and tests work
+    without live Drive access.
+
+    When ``IMAGE_SYNC_INTERVAL_SECONDS > 0`` AND Drive creds are present, a
+    single ``asyncio`` background sync task is started (§12.13) and cancelled
+    cleanly on shutdown. With 0/unset/invalid OR no creds the task is NEVER
+    created (hermetic local/CI/tests — R-Bake8).
     """
     try:
-        await drive_service.discover_levels(force=True)
+        if not drive_service.load_discovery(force=True):
+            # No usable manifest -> live Drive metadata discovery (fallback).
+            await drive_service.discover_levels(force=True)
     except Exception as exc:  # defensive: discovery must never block startup
         logger.warning("Startup discovery did not complete: %s", type(exc).__name__)
-    yield
+    # Load image captions once (§11.2). The loader is tolerant — a missing or
+    # malformed app/captions.json degrades to an empty map and never raises.
+    captions.load_captions()
+
+    # §12.13: start the periodic background sync ONLY when explicitly enabled
+    # AND creds exist. This gate is what keeps the test suite + local runs
+    # hermetic — with the env unset/0 the task is never scheduled and Drive is
+    # never polled.
+    sync_task: asyncio.Task | None = None
+    interval = _image_sync_interval()
+    creds_present = bool(os.environ.get("GD_API_KEY")) and bool(
+        os.environ.get("GD_ROOT_FOLDER")
+    )
+    if interval > 0 and creds_present:
+        logger.info("Background image sync ENABLED: every %ds.", interval)
+        sync_task = asyncio.create_task(
+            drive_service.background_sync_loop(interval)
+        )
+    else:
+        logger.info(
+            "Background image sync DISABLED (interval=%d, creds=%s).",
+            interval,
+            creds_present,
+        )
+
+    try:
+        yield
+    finally:
+        if sync_task is not None:
+            sync_task.cancel()
+            try:
+                await sync_task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title="Archive 19 — Dynamic Gallery", lifespan=lifespan)
@@ -169,11 +234,34 @@ async def level_photos(level_id: int):
     except DriveError:
         return JSONResponse({"detail": "Upstream Drive error."}, status_code=502)
 
+    # A missing-level (available: false) image is baked under .../levels/missing/,
+    # an available level's images under .../levels/{id}/ (§12.3).
+    disk_subdir = str(level_id) if result.available else drive_service.MISSING_DIR_NAME
+
     def _ref(photo) -> dict:
-        return {
+        # §12.3/§12.5/§12.8: emit the static URL iff the baked file exists on
+        # disk; otherwise fall back to the guarded media proxy (un-baked / local
+        # dev / not-yet-synced id). file_id + name + caption are unchanged.
+        baked = LEVELS_IMG_DIR / disk_subdir / photo.name
+        if drive_service.is_safe_name(photo.name) and baked.is_file():
+            url = f"/static/img/levels/{disk_subdir}/{photo.name}"
+        else:
+            url = f"/api/levels/{level_id}/media/{photo.file_id}"
+        ref = {
             "file_id": photo.file_id,
-            "url": f"/api/levels/{level_id}/media/{photo.file_id}",
+            "url": url,
         }
+        # Optional, additive caption keyed by (level, filename) — §11.3. Absent
+        # captions OMIT the key entirely (payload identical to today). A partial
+        # entry (only one theme present) emits "" for the missing theme so the
+        # client can still toggle without a missing-key error.
+        cap = captions.get_caption(level_id, photo.name)
+        if cap:
+            ref["caption"] = {
+                "sea": cap.get("sea", ""),
+                "horror": cap.get("horror", ""),
+            }
+        return ref
 
     payload = {
         "level": result.level,
@@ -218,16 +306,44 @@ async def media_proxy(level_id: int, file_id: str):
 
 @app.post("/api/refresh")
 async def refresh():
-    """Manually rebuild the discovery cache without a redeploy (R2).
+    """Manually refresh discovery + captions, and force an immediate sync (§12.13.5).
 
-    A forced rediscovery also rebuilds the scope/list cache and clears the
-    in-memory media byte cache (both done inside ``discover_levels(force=True)``)
-    so a Drive change takes full effect — no stale bytes or stale scope.
+    Under the M12 manifest model (§12.4) refresh first **re-reads the manifest**
+    (PRIMARY) — falling back to live Drive metadata discovery when no manifest
+    is present — and **re-reads captions** so an edit takes effect without a
+    redeploy (§11.2). When the background sync is enabled AND creds are present,
+    it ALSO triggers an **immediate** sync via the SAME single-flight code path
+    (§12.13.5) so an operator can pull new images on demand instead of waiting
+    for the next tick. With sync disabled (e.g. tests/CI) it is a no-op refresh,
+    exactly as before — no Drive download, no new behavior on the test path.
     """
-    cache = await drive_service.discover_levels(force=True)
+    if not drive_service.load_discovery(force=True):
+        # No manifest -> fall back to live Drive metadata discovery (R2).
+        await drive_service.discover_levels(force=True)
+    # Re-read captions so a caption edit takes effect without a redeploy (§11.2).
+    captions.reload_captions()
+
+    # §12.13.5: an explicit operator action MAY pull new images on demand even
+    # when the periodic loop is off — but only when creds are present (so the
+    # hermetic test path, which has dummy creds but no real Drive, stays a
+    # cheap re-read: run_sync_once short-circuits to a metadata list that the
+    # mocked tests already handle). We only fire it when the periodic sync is
+    # actually enabled to keep /api/refresh behavior identical under the test
+    # suite (sync disabled there).
+    sync_status = "disabled"
+    if _image_sync_interval() > 0 and os.environ.get("GD_API_KEY"):
+        try:
+            result = await drive_service.run_sync_once()
+            sync_status = str(result.get("status", "unknown"))
+        except Exception as exc:  # never let a sync error fail the refresh
+            logger.warning("On-demand sync errored: %s", type(exc).__name__)
+            sync_status = "error"
+
+    cache = drive_service.get_cache()
     return {
         "ready": cache.ready,
         "levels": len(cache.levels),
         "available": sorted(cache.folder_index.keys()),
         "missing_folder": cache.missing_folder_id is not None,
+        "sync": sync_status,
     }

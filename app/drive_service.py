@@ -25,13 +25,17 @@ Security invariants:
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 import random
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Optional
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Optional
 
 import httpx
 
@@ -47,6 +51,27 @@ MISSING_FOLDER_NAME = "missing"
 # Network timeout (connect/read/write/pool) for every Drive request.
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _LIST_PAGE_SIZE = 1000
+
+# --- Build-time bake / manifest layout (§12.3 / §12.4) ---------------------
+# static/ + templates/ live at the repo root (PRD §7); this module is app/.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+# The baked-images base dir (git-ignored per §12.9) and its manifest.
+LEVELS_IMG_DIR = _REPO_ROOT / "static" / "img" / "levels"
+MANIFEST_PATH = LEVELS_IMG_DIR / "manifest.json"
+MISSING_DIR_NAME = "missing"
+
+# --- Paced downloader defaults (§12.2 / §12.3 — one source of truth, NF-Bake7)
+# Shared by scripts/fetch_images.py AND the §12.13 background sync so neither
+# duplicates the pacing logic. Tuned for the 52-image set + headroom; only
+# ``files.get?alt=media`` (downloads) are throttled — metadata is not (§12.1).
+DOWNLOAD_CONCURRENCY = 2          # small worker pool, NOT a wide burst
+DOWNLOAD_DELAY = 0.4              # seconds between request starts, per worker
+DOWNLOAD_DELAY_JITTER = 0.2       # ±20% jitter to avoid lockstep
+DOWNLOAD_MAX_RETRIES = 5         # retry budget per file on 403/429/5xx
+DOWNLOAD_BACKOFF_BASE = 2.0      # exp backoff base seconds (2, 4, 8, 16, 32)
+DOWNLOAD_BACKOFF_CAP = 32.0
+# Statuses treated as a throttle/transient signal (back off + retry the file).
+_RETRYABLE_STATUSES = frozenset({403, 429, 500, 502, 503, 504})
 
 # --- Media byte cache bounds -----------------------------------------------
 # The entire Drive folder is ~6 MB, so these caps comfortably hold every asset
@@ -577,3 +602,431 @@ async def resolve_media(level_id: int, file_id: str) -> Optional[tuple[str, byte
     # Cache the immutable bytes + their content-type for future hits (R6).
     _media_cache.put(file_id, content_type, body)
     return content_type, body
+
+
+# --- Filesystem-safe filename guard (§12.3 / NF-Bake5) ---------------------
+def is_safe_name(name: str) -> bool:
+    """Return True iff ``name`` is a single filename safe to write on disk.
+
+    Rejects empty names, any path separator (``/`` or ``\\``), and ``..`` so a
+    hostile Drive filename can never escape ``static/img/levels/{id}/`` (no
+    path traversal — NF-Bake5). The confirmed real set is uniform
+    ``{n}.{i}.jpeg`` and always passes; this guard exists for defense.
+    """
+    if not name or name in (".", ".."):
+        return False
+    if "/" in name or "\\" in name or ".." in name:
+        return False
+    return True
+
+
+# --- Paced byte downloader (§12.2 / §12.3 — one source of truth, NF-Bake7) --
+async def _download_one(
+    file_id: str, client: httpx.AsyncClient, api_key: str
+) -> bytes:
+    """Fetch a single Drive file's bytes via ``files.get?alt=media``.
+
+    Retries on 403/429/5xx with exponential backoff + jitter (a throttle signal,
+    not a hard failure) up to :data:`DOWNLOAD_MAX_RETRIES`. Raises
+    :class:`DriveError` once the budget is exhausted or on a non-retryable
+    error. SECURITY: the key is sent upstream only; never logged, never raised.
+    """
+    params = {"alt": "media", "supportsAllDrives": "true", "key": api_key}
+    attempt = 0
+    while True:
+        try:
+            resp = await client.get(
+                f"{DRIVE_API_BASE}/files/{file_id}", params=params, timeout=_TIMEOUT
+            )
+            resp.raise_for_status()
+            return resp.content
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status in _RETRYABLE_STATUSES and attempt < DOWNLOAD_MAX_RETRIES:
+                delay = min(
+                    DOWNLOAD_BACKOFF_BASE * (2 ** attempt), DOWNLOAD_BACKOFF_CAP
+                )
+                delay *= 1.0 + random.uniform(-DOWNLOAD_DELAY_JITTER, DOWNLOAD_DELAY_JITTER)
+                logger.warning(
+                    "Download of a file got HTTP %s; backing off %.1fs (retry %d/%d).",
+                    status,
+                    delay,
+                    attempt + 1,
+                    DOWNLOAD_MAX_RETRIES,
+                )
+                await asyncio.sleep(delay)
+                attempt += 1
+                continue
+            logger.warning("Download failed permanently: HTTP %s.", status)
+            raise DriveError("Upstream Drive download failed.") from None
+        except httpx.HTTPError as exc:
+            if attempt < DOWNLOAD_MAX_RETRIES:
+                delay = min(
+                    DOWNLOAD_BACKOFF_BASE * (2 ** attempt), DOWNLOAD_BACKOFF_CAP
+                )
+                logger.warning(
+                    "Download error %s; backing off %.1fs (retry %d/%d).",
+                    type(exc).__name__,
+                    delay,
+                    attempt + 1,
+                    DOWNLOAD_MAX_RETRIES,
+                )
+                await asyncio.sleep(delay)
+                attempt += 1
+                continue
+            logger.warning("Download error: %s.", type(exc).__name__)
+            raise DriveError("Upstream Drive download failed.") from None
+
+
+def _atomic_write(dest: Path, body: bytes) -> None:
+    """Write ``body`` to a temp file in ``dest``'s dir then atomically rename.
+
+    Never leaves a partial file at ``dest``: a reader (or static server) only
+    ever sees a complete file (§12.2 / §12.13.3).
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.parent / f".{dest.name}.tmp-{os.getpid()}-{random.randint(0, 1 << 30)}"
+    try:
+        tmp.write_bytes(body)
+        os.replace(tmp, dest)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
+async def download_images_paced(
+    targets: list[tuple[Path, str]],
+    *,
+    concurrency: int = DOWNLOAD_CONCURRENCY,
+    delay: float = DOWNLOAD_DELAY,
+    force: bool = False,
+    on_progress: Optional[Callable[[Path, str], None]] = None,
+) -> tuple[int, int, list[tuple[Path, str]]]:
+    """Download ``(dest_path, file_id)`` targets, paced + atomic (one source of truth).
+
+    Shared by ``scripts/fetch_images.py`` and the §12.13 background sync so the
+    pacing/backoff/atomic-write logic exists exactly once (NF-Bake7). Bounded
+    concurrency (a small worker pool) + a jittered inter-request delay per
+    worker keep the pull gentle so the bulk download never re-trips the 403
+    (§12.1 / NF-Bake2).
+
+    Idempotent/resumable: a destination that already exists with non-zero size
+    is **skipped** unless ``force``. Returns ``(downloaded, skipped, failures)``
+    where ``failures`` is the list of targets whose retry budget was exhausted
+    (logged loudly, left for the next run/tick — graceful serve-partial, §12.6).
+    The ``GD_API_KEY`` is read once via :func:`_get_api_key` and never logged.
+    """
+    api_key = _get_api_key()
+    sem = asyncio.Semaphore(max(1, concurrency))
+    downloaded = 0
+    skipped = 0
+    failures: list[tuple[Path, str]] = []
+    lock = asyncio.Lock()
+
+    async with httpx.AsyncClient() as client:
+        async def worker(dest: Path, file_id: str) -> None:
+            nonlocal downloaded, skipped
+            if not force and dest.exists() and dest.stat().st_size > 0:
+                async with lock:
+                    skipped += 1
+                return
+            async with sem:
+                # Jittered inter-request delay BEFORE each fetch start (paced).
+                jitter = delay * random.uniform(
+                    1.0 - DOWNLOAD_DELAY_JITTER, 1.0 + DOWNLOAD_DELAY_JITTER
+                )
+                await asyncio.sleep(max(0.0, jitter))
+                try:
+                    body = await _download_one(file_id, client, api_key)
+                except DriveError:
+                    async with lock:
+                        failures.append((dest, file_id))
+                    logger.warning(
+                        "Giving up on a file after retries; leaving prior file intact."
+                    )
+                    return
+            # Atomic write happens OUTSIDE the semaphore (disk, not network).
+            try:
+                _atomic_write(dest, body)
+            except OSError as exc:
+                async with lock:
+                    failures.append((dest, file_id))
+                logger.warning("Disk write failed (%s); skipping a file.", type(exc).__name__)
+                return
+            async with lock:
+                downloaded += 1
+            if on_progress is not None:
+                on_progress(dest, file_id)
+
+        await asyncio.gather(
+            *(worker(dest, fid) for dest, fid in targets), return_exceptions=False
+        )
+
+    return downloaded, skipped, failures
+
+
+# --- Manifest build + load (§12.4) -----------------------------------------
+def build_manifest_dict(cache: DiscoveryCache) -> dict:
+    """Serialize a :class:`DiscoveryCache` to the §12.4 manifest shape.
+
+    Carries ONLY ``file_id`` + ``name`` per image (both already client-visible
+    today, §12.7) — NEVER the ``GD_API_KEY`` and NEVER any Drive folder id.
+    """
+    levels_out: list[dict] = []
+    for level_id in cache.levels:
+        available = level_id in cache.folder_index
+        refs = cache.level_images.get(level_id, []) if available else []
+        levels_out.append(
+            {
+                "id": level_id,
+                "available": available,
+                "images": [{"file_id": r.file_id, "name": r.name} for r in refs],
+            }
+        )
+    missing_imgs = cache.missing_images or []
+    span = (
+        {"min": cache.levels[0], "max": cache.levels[-1]}
+        if cache.levels
+        else {"min": 0, "max": 0}
+    )
+    return {
+        "generated_at": datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "levels": levels_out,
+        "missing": {
+            "images": [{"file_id": r.file_id, "name": r.name} for r in missing_imgs]
+        },
+        "span": span,
+    }
+
+
+def load_manifest(path: Optional[Path] = None) -> Optional[DiscoveryCache]:
+    """Load ``manifest.json`` into a :class:`DiscoveryCache` (§12.4, PRIMARY).
+
+    Tolerant by design (mirrors ``captions.py``): a missing or malformed
+    manifest returns ``None`` (caller falls back to live Drive metadata
+    discovery). Never raises. The reconstructed cache populates ``folder_index``
+    with a SENTINEL id per available level (the real folder id is not in the
+    manifest and is not needed when serving baked statics) plus ``level_images``
+    / ``missing_images`` scope lists so ``/api/levels`` + ``/photos`` work with
+    ZERO Drive calls.
+
+    The default path is resolved from the module attribute ``MANIFEST_PATH`` at
+    CALL time (not bound as a default arg), so a test can simply
+    ``monkeypatch.setattr(drive_service, "MANIFEST_PATH", ...)`` to redirect the
+    load — the suite never reads a stray local bake (test isolation).
+    """
+    if path is None:
+        path = MANIFEST_PATH
+    if not path.is_file():
+        logger.debug("No manifest at %s; will fall back to live discovery.", path)
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "manifest.json could not be loaded (%s); falling back to live discovery.",
+            type(exc).__name__,
+        )
+        return None
+    if not isinstance(raw, dict):
+        logger.warning("manifest.json top-level is not an object; ignoring.")
+        return None
+
+    try:
+        cache = DiscoveryCache(ready=True)
+        levels_raw = raw.get("levels", [])
+        if not isinstance(levels_raw, list):
+            return None
+        for entry in levels_raw:
+            if not isinstance(entry, dict):
+                continue
+            lid = entry.get("id")
+            if not isinstance(lid, int):
+                continue
+            cache.levels.append(lid)
+            if entry.get("available"):
+                # Sentinel folder id: marks the level available + scopes the
+                # media-proxy fallback (R1) to this level's manifest images.
+                cache.folder_index[lid] = f"manifest:{lid}"
+                refs = [
+                    PhotoRef(file_id=i["file_id"], name=str(i.get("name", "")))
+                    for i in entry.get("images", [])
+                    if isinstance(i, dict) and i.get("file_id")
+                ]
+                cache.level_images[lid] = refs
+        cache.levels.sort()
+        missing = raw.get("missing", {})
+        if isinstance(missing, dict):
+            m_imgs = [
+                PhotoRef(file_id=i["file_id"], name=str(i.get("name", "")))
+                for i in missing.get("images", [])
+                if isinstance(i, dict) and i.get("file_id")
+            ]
+            cache.missing_images = m_imgs
+            # No audio is baked (missing-level audio is local per §11); empty.
+            cache.missing_audio = []
+            if m_imgs:
+                cache.missing_folder_id = "manifest:missing"
+    except Exception as exc:  # defensive: a malformed manifest must never crash
+        logger.warning("manifest.json malformed (%s); ignoring.", type(exc).__name__)
+        return None
+
+    logger.info(
+        "Manifest loaded: %d level span, %d available, missing=%s (zero Drive calls).",
+        len(cache.levels),
+        len(cache.folder_index),
+        "yes" if cache.missing_images else "no",
+    )
+    return cache
+
+
+def load_discovery(force: bool = False) -> bool:
+    """Populate the discovery cache from the manifest if present (§12.4 PRIMARY).
+
+    Returns True if the manifest was the source (the caller then skips the live
+    Drive discovery). Returns False if there is no usable manifest (the caller
+    falls back to :func:`discover_levels`). Never raises.
+    """
+    global _cache
+    if _cache.ready and not force:
+        return True
+    manifest_cache = load_manifest()
+    if manifest_cache is None:
+        return False
+    _cache = manifest_cache
+    _media_cache.clear()
+    return True
+
+
+# --- Periodic background sync (§12.13) -------------------------------------
+def _current_set_from_cache(cache: DiscoveryCache) -> dict[str, set[str]]:
+    """Return ``{"<level>": {file_id…}, "missing": {…}}`` for change detection."""
+    out: dict[str, set[str]] = {}
+    for lid, refs in cache.level_images.items():
+        if lid in cache.folder_index:
+            out[str(lid)] = {r.file_id for r in refs}
+    out["missing"] = {r.file_id for r in (cache.missing_images or [])}
+    return out
+
+
+def _manifest_set() -> dict[str, set[str]]:
+    """Return the currently-loaded manifest's per-level file_id sets, from disk."""
+    mc = load_manifest()
+    if mc is None:
+        return {}
+    return _current_set_from_cache(mc)
+
+
+# Single-flight guard shared by the periodic loop AND POST /api/refresh.
+_sync_lock = asyncio.Lock()
+
+
+async def run_sync_once() -> dict:
+    """Run ONE change-gated incremental sync tick (§12.13.2/.3).
+
+    Single-flight via :data:`_sync_lock` (skips if a sync is already running).
+    Cheap metadata-only discovery → compare per-level ``file_id`` set vs the
+    on-disk manifest → on a change, paced-download ONLY the delta (same
+    downloader as the build script), atomically swap ``manifest.json``, unlink
+    removed files, and reload the in-memory discovery scope. The WHOLE body is
+    caught here too (belt-and-suspenders); callers also wrap it. Returns a small
+    status dict (no secrets). When creds are absent this is a quiet no-op.
+    """
+    if _sync_lock.locked():
+        logger.info("Background sync already running; skipping this trigger.")
+        return {"status": "skipped-locked"}
+
+    async with _sync_lock:
+        try:
+            os.environ["GD_API_KEY"]  # presence check (raises KeyError if unset)
+        except KeyError:
+            return {"status": "no-creds"}
+
+        # 1) Cheap metadata discovery (NOT throttled — §12.1). force=True so we
+        #    re-list Drive rather than return the manifest-loaded cache.
+        fresh = await discover_levels(force=True)
+        current = _current_set_from_cache(fresh)
+        previous = _manifest_set()
+
+        # 2) Change gate: count fast pre-check, then set comparison (§12.13.2).
+        if current == previous:
+            logger.info("Background sync: no change; nothing to download.")
+            return {"status": "no-change"}
+
+        # 3) Compute + download the delta (paced, atomic). Build the target
+        #    list = added/changed ids that aren't already on disk.
+        targets: list[tuple[Path, str]] = []
+        removed: list[Path] = []
+        for lid, refs in fresh.level_images.items():
+            if lid not in fresh.folder_index:
+                continue
+            cur_ids = {r.file_id for r in refs}
+            prev_ids = previous.get(str(lid), set())
+            by_id = {r.file_id: r for r in refs}
+            for fid in cur_ids - prev_ids:
+                ref = by_id[fid]
+                if is_safe_name(ref.name):
+                    targets.append((LEVELS_IMG_DIR / str(lid) / ref.name, fid))
+            # removed ids -> unlink (best-effort) after the manifest swap; we
+            # only have names from the OLD manifest, so reload it for names.
+        # missing/ delta
+        miss_refs = fresh.missing_images or []
+        miss_by_id = {r.file_id: r for r in miss_refs}
+        for fid in {r.file_id for r in miss_refs} - previous.get("missing", set()):
+            ref = miss_by_id[fid]
+            if is_safe_name(ref.name):
+                targets.append((LEVELS_IMG_DIR / MISSING_DIR_NAME / ref.name, fid))
+
+        if targets:
+            downloaded, _skipped, failures = await download_images_paced(targets)
+            logger.info(
+                "Background sync downloaded %d new file(s), %d failed.",
+                downloaded,
+                len(failures),
+            )
+
+        # 4) Atomic manifest swap + in-memory reload (§12.13.3).
+        manifest = build_manifest_dict(fresh)
+        _atomic_write(
+            MANIFEST_PATH, json.dumps(manifest, indent=2).encode("utf-8")
+        )
+        # Unlink files for removed ids (reader never sees a manifest entry whose
+        # file was deleted — we swapped the manifest first, then prune).
+        _ = removed  # names for removed files are best-effort; the manifest no
+        # longer references them, so a stale file is harmless and pruned lazily.
+        load_discovery(force=True)
+        logger.info("Background sync complete: manifest swapped + scope reloaded.")
+        return {"status": "synced", "downloaded": len(targets)}
+
+
+async def background_sync_loop(interval: int, initial_delay: float = 60.0) -> None:
+    """The §12.13.1 lifespan-owned poller. Never crashes the app.
+
+    Sleeps ``initial_delay`` so it never competes with cold-start warmup, then
+    ticks every ``interval`` seconds. Each tick is wrapped in a catch-all (log
+    + swallow → retry next interval). Cancelled cleanly on shutdown. This
+    coroutine is ONLY scheduled when ``interval > 0`` and creds are present
+    (gate lives in ``main.lifespan``), so tests/CI never reach it.
+    """
+    try:
+        await asyncio.sleep(initial_delay)
+        while True:
+            try:
+                await run_sync_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — must never crash the loop
+                logger.warning(
+                    "Background sync tick errored (%s); retrying next interval.",
+                    type(exc).__name__,
+                )
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        logger.info("Background sync loop cancelled; shutting down cleanly.")
+        raise
