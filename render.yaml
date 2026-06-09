@@ -10,7 +10,7 @@ services:
     name: archive19-gallery
     runtime: python
     plan: free
-    region: oregon            # adjust as needed (oregon | frankfurt | singapore | ohio | virginia)
+    region: singapore         # low-traffic, Asia audience (HostQ5, 2026-06-09); options: oregon | frankfurt | singapore | ohio | virginia
     branch: main
     buildCommand: pip install -r requirements.txt && python scripts/fetch_images.py
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
