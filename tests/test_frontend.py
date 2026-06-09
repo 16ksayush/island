@@ -260,6 +260,7 @@ def test_index_links_all_static_assets(client):
 
 def test_level_page_links_all_static_assets(client):
     html = client.get("/level/1").text
-    assert '<link rel="stylesheet" href="/static/style.css" />' in html
+    # style.css is cache-busted (?v=N) on the level page too; accept the version.
+    assert _links_style_css(html), "style.css link missing/unexpected form"
     assert '<script src="/static/theme.js"></script>' in html
     assert '<script src="/static/audio-engine.js"></script>' in html

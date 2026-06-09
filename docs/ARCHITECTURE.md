@@ -386,3 +386,91 @@ The source `static/img/light/landing-map.png` is **2.7 MB** and **must not ship 
 - **R-S8 (NEW — landscape pan range on mobile may bury low-id islands):** The ~16:9 art panned at 130–175vw puts the bottom-row islands (12, 17, 15) far down the scroll. The start corner shows 0–4; ensure no island is unreachable and consider a subtle "pan to explore" affordance. Low severity; QA at S7.
 
 **Resolved-with-default (no user input required to proceed):** SQ1, SQ2, SQ3 (pending SQ6), SQ4, SQ5 (the scale/pan model). **Needs an explicit USER decision:** SQ6 (art-for-Sea confirmation + eerie-names-in-aria + palette stays azure) and the SQ5 sub-question (do they *insist* on a mobile grid fallback — default is no). Everything else is an architect call locked by a "go."
+
+---
+
+# 10. Hosting / Deployment fit (M8 / HostR1–HostR11, HostC1–HostC4, HostQ1–HostQ5)
+
+Status: **Host CHOSEN — Render (D13, user-decided 2026-06-09); HostQ1 RESOLVED.** The architect recommendation (Render primary; Fly.io / HF Spaces fallbacks) was accepted as-is — no new code or config required (the committed `render.yaml` Blueprint stands). Remaining open Qs = cold-start tolerance (HostQ2), domain (HostQ3), Drive-sharing confirm (HostQ4), traffic/region (HostQ5), and `/api/refresh` auth (R-D6, §10.5); these shape the deploy but do not block starting it. This section scores the five candidate hosts (REQUIREMENTS §12.3 / HostC3) against the architectural ground truth and the HostR# requirements, then recommends a **primary + fallback**. It is additive to §1–§9 and changes no decision D1–D12, no route (§4), no payload (§4.1), and no backend behavior. The diff for M8 is **doc + (only if a non-Render host is chosen) one new config artifact + README deploy instructions** (REQUIREMENTS §12.5).
+
+## 10.1 Architectural ground truth restated (what the host MUST satisfy)
+This app is a **persistent Python ASGI server with state in the running process** — not a static site, and not (without rework) a stateless serverless function. The host-disqualifying properties are:
+- **Persistent process + `lifespan` startup discovery + in-memory cache.** On boot the FastAPI `lifespan` lists the Drive parent's children to build the level→folder map (§5.1) and holds it plus a bounded LRU of image bytes **in process memory**. `POST /api/refresh` rebuilds that in-process state. A host that recycles the process per request (serverless) re-discovers on every cold instance and a refresh on instance A is invisible to instance B (HostC2).
+- **Server-side secret `GD_API_KEY`** read via `os.environ`, **never** sent to the browser (F10 / HostR3, SECURITY_ENGINEER veto). The host must inject env secrets and keep them server-side. A pure static host (GitHub Pages) cannot hold a secret at all (HostC1).
+- **SSR Jinja2** every request (theme cookie read server-side, §1) — no static prebuild.
+- **Drive byte-proxy streaming** (`StreamingResponse`, §4) — sensitive to per-invocation execution-time and egress-bandwidth caps on serverless tiers.
+- **Static `/static/audio/`** served reliably (all audio in-repo, D9 / HostR11).
+- **Health check `/api/levels`** (HostR6) + graceful degradation when env unset.
+
+## 10.2 Host-fit decision matrix (HostR1–HostR11)
+Legend: ✅ satisfies · ⚠️ satisfies with caveat · ❌ fails. "Cache survives" = does the in-memory LRU + discovery map persist across requests within a warm instance (it **never** survives a cold start on any free tier — see R-D5).
+
+| Property / Requirement | **Render** (web service) | **Fly.io** (machine) | **HF Spaces** (Docker) | **Vercel** (serverless) | **GitHub Pages** (static) |
+|---|---|---|---|---|---|
+| Free tier (HostR7) | ✅ free web service | ✅ small-machine free allowance | ✅ free | ✅ free (hobby) | ✅ free |
+| Persistent ASGI process + `lifespan` (HostR1) | ✅ long-lived Uvicorn | ✅ long-lived VM | ✅ long-lived container | ❌ ephemeral per-invocation | ❌ no server at all |
+| Holds server-side secret (HostR2/HostR3) | ✅ `sync:false` env | ✅ `fly secrets` | ✅ Space "Secrets" | ⚠️ env exists, but secret reused per cold fn | ❌ cannot hold a secret |
+| In-memory cache survives across requests (R2) | ⚠️ within warm instance; lost on spin-down | ✅ within warm machine; lost only on stop | ⚠️ within warm Space; lost on sleep | ❌ not across cold invocations | ❌ n/a |
+| Secret injection mechanism (HostR2) | dashboard env (`sync:false`) | `fly secrets set` | Space Settings → Secrets | project env vars | none |
+| Auto-deploy from GitHub `main` (HostR5) | ✅ `autoDeploy:true` (committed) | ⚠️ via GH Action / `fly deploy` (not native push) | ⚠️ Git push to Space remote, or GH sync | ✅ native Git integration | ✅ native (but static only) |
+| Public HTTPS URL (HostR4) | ✅ `*.onrender.com` | ✅ `*.fly.dev` | ✅ `*.hf.space` | ✅ `*.vercel.app` | ✅ `*.github.io` |
+| Custom domain (HostQ3) | ✅ free | ✅ free | ⚠️ limited | ✅ free | ✅ free |
+| Serves `static/audio/` (HostR11) | ✅ | ✅ | ✅ | ⚠️ static OK, but app is split fn+static | ✅ (static only) |
+| Python 3.13 + `requirements.txt` (HostR8) | ✅ `PYTHON_VERSION=3.13.0` | ✅ via Dockerfile base | ✅ via Dockerfile base | ⚠️ runtime pin + handler wrapper | ❌ no Python |
+| Health check `/api/levels` (HostR6) | ✅ `healthCheckPath` (committed) | ⚠️ `[checks]` in `fly.toml` | ⚠️ container healthcheck | ❌ no long-lived process to check | ❌ n/a |
+| Streamed Drive bytes vs free limits (HostR9/§12.5) | ⚠️ bandwidth fair-use; proxy egress counts | ⚠️ egress allowance | ⚠️ fair-use | ❌ per-fn exec-time + bandwidth caps hurt streaming | ❌ n/a |
+| Cold-start behavior (HostR9/HostQ2) | ⚠️ spins down ~15 min idle → ~30–60s cold start (+ re-discovery) | ⚠️ scale-to-zero optional; can stay warm within allowance | ⚠️ sleeps on inactivity → wake delay | ❌ frequent cold starts, re-discovery each time | ✅ none (but no app) |
+| Effort given what's committed | ✅ **lowest** — `render.yaml` + `Procfile` already in repo; apply Blueprint, set 2 env vars | ⚠️ author a `Dockerfile` + `fly.toml`, run `fly launch` | ⚠️ author a `Dockerfile` (port **7860**), make a (public) Space, set Secrets | ❌ **highest** — rework cache/discovery + `vercel.json` + handler | n/a — re-architect away from secure proxy |
+| **Verdict** | ✅ **PRIMARY** | ✅ **FALLBACK A** | ⚠️ **FALLBACK B** | ❌ poor fit as-is | ❌ not viable |
+
+### 10.2.1 Why Vercel is a poor fit as-is (HostC2 expanded)
+FastAPI *can* run as a Vercel Python serverless function, but the architecture breaks on four points:
+1. **Lifespan discovery doesn't fit the model.** Serverless functions don't run a persistent `lifespan`; discovery would have to move to **per-request** (slow, re-lists Drive on cold start) or to a **build-time manifest** (defeats dynamic scaling / D5) or to an **external cache** (e.g. Upstash Redis / Vercel KV).
+2. **In-memory cache + `POST /api/refresh` don't persist.** Each cold instance has its own memory; a refresh on one instance is invisible to others and is wiped on recycle (R2). Surviving state requires an external store — a new dependency the project doesn't have.
+3. **Streaming Drive bytes hits caps.** Per-invocation execution-time and egress-bandwidth limits on the hobby tier are hostile to proxying/streaming image bytes through the function (the LRU that mitigates this can't be relied on — see point 2).
+4. **Cold starts** add latency on top of (1).
+
+**Rework it would need:** move discovery to per-request or a scheduled manifest build; back the cache + refresh with an external KV/Redis (Upstash); accept ephemeral per-instance memory; possibly offload media proxying to signed redirects (which risks the F10 key-isolation gate if done naively). **Tradeoff:** this is a meaningful re-architecture of §5/§5.1 and the cache/refresh model for **no benefit** over a free persistent host — so Vercel is rejected for M8 unless HostQ1 flips to "re-architect."
+
+### 10.2.2 Why GitHub Pages is not viable (HostC1)
+Static-only: no Python process (fails HostR1), cannot hold `GD_API_KEY` (fails HostR2/HostR3), cannot proxy Drive bytes (fails F8/F10). Making it work means a fully client-side app that either **exposes the API key in the browser** (hard F10/HostR3 violation, SECURITY veto) or drops the secure proxy entirely. **Rejected.**
+
+## 10.3 Recommendation — Primary: Render · Fallback A: Fly.io · Fallback B: HF Spaces
+**Primary: Render free web service.** It is the only candidate already fully Blueprinted in the repo (`render.yaml` with `autoDeploy:true`, `healthCheckPath:/api/levels`, `PYTHON_VERSION=3.13.0`, `GD_API_KEY`/`GD_ROOT_FOLDER` as `sync:false`), satisfies HostR1–HostR8 + HostR10/HostR11 with **zero new code or config**, and its only material weakness (cold-start spin-down, HostR9) is acceptable for a free portfolio/demo app (HostQ2 lean). Effort to deploy: apply the Blueprint, set two env vars, push to `main`.
+
+**Fallback A: Fly.io** — if Render's ~15-min spin-down / ~30–60s cold start is judged too rough, Fly's free small-machine allowance can keep a machine warmer and gives a persistent VM. Cost: one new artifact (`Dockerfile` + `fly.toml`) and a non-native deploy path (GH Action or `fly deploy`).
+
+**Fallback B: Hugging Face Spaces** — free Docker FastAPI, secrets via Space Settings. Caveats: the container must listen on **port 7860**, the **Space is public** (acceptable — D8 says the app is public/no-auth, but note source visibility), and it **sleeps on inactivity** (same cold-start class as Render).
+
+**Position on the blocking open questions:**
+- **HostQ1 (architecture commitment):** **KEEP the FastAPI Drive-proxy + in-memory-cache architecture → persistent web service.** Do not re-architect to static/serverless. Re-architecting touches the backend, the F10/HostR3 secret-isolation model, and the §5.1 cache/refresh design for no free-tier benefit; GitHub Pages is out (HostC1) and Vercel needs external-store rework (§10.2.1). This is the architect lean and aligns with REQUIREMENTS §12.4 HostQ1.
+- **HostQ2 (cold start acceptable):** **ACCEPT free-tier spin-down** for this demo. First visit after idle waits ~30–60s (process boot **plus** Drive re-discovery — R-D5); steady-state is warm and fast. Optional mitigation in §10.4 if the user wants to reduce it.
+
+## 10.4 Concrete deploy shape for the recommended host (Render)
+**Already in place (no change):** `render.yaml` (Blueprint: `type:web`, `plan:free`, `branch:main`, `buildCommand: pip install -r requirements.txt`, `startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT`, `autoDeploy:true`, `healthCheckPath:/api/levels`) and `Procfile` (kept as a portability artifact for Fly/Railway/Heroku-style hosts).
+
+**Env vars to set in the Render dashboard (Environment tab — never in git):**
+- `GD_API_KEY` — **secret** (`sync:false` → Render prompts for it; never read from the committed file).
+- `GD_ROOT_FOLDER` — the parent Drive folder ID/link (config, `sync:false` here so it stays a dashboard fill-in; the app degrades to an empty gallery until set).
+- `PYTHON_VERSION=3.13.0` — already in `render.yaml`.
+
+**Start command / health check:** as committed above; Render polls `/api/levels` for readiness.
+
+**Cold-start mitigation options (HostQ2 — pick one, all optional):**
+1. **Accept it** (architect default for a demo): document the first-hit delay; no extra work.
+2. **External uptime pinger** (e.g. UptimeRobot / cron-job.org) hitting `/api/levels` every ~10–14 min to keep the instance warm within free fair-use. Lowest effort, no code; note it consumes free-tier compute minutes and is a grey-area "keep-warm."
+3. **Move to a host that idles less** (Fly.io, Fallback A) — only if (1)/(2) prove insufficient.
+
+**`POST /api/refresh` post-deploy:** the cache builds automatically on `lifespan` startup; a manual refresh (after adding/removing Drive folders without redeploying) is a one-off authenticated-by-obscurity `POST` to `https://<app>.onrender.com/api/refresh`. **Flag (S-sec):** confirm with SECURITY_ENGINEER whether `POST /api/refresh` should be protected (it mutates in-process state and triggers Drive listing) — see §10.5 R-D6. On a spin-down host the cache is rebuilt on every cold start anyway, so manual refresh matters only within a warm session.
+
+**If a fallback host is chosen instead:** author the minimal new artifact **only then** — Fly.io needs a `Dockerfile` (Python 3.13 base, `pip install -r requirements.txt`, `CMD uvicorn app.main:app --host 0.0.0.0 --port 8080`) + `fly.toml` (internal port 8080, `[checks]` on `/api/levels`); HF Spaces needs a `Dockerfile` listening on **port 7860** + Space "Secrets". Neither is committed unless that host is selected (REQUIREMENTS §12.5).
+
+## 10.5 Risks / flags for PM (M8)
+- **R-D1 (Render spin-down UX):** free tier idles after ~15 min → next visitor waits ~30–60s. Acceptable per HostQ2 lean, but it **is** a visible first-impression cost for a portfolio piece. PM to confirm the user accepts it or wants the §10.4(2) pinger / Fly.io fallback.
+- **R-D2 (cold start re-runs Drive discovery):** because discovery is in `lifespan`, every cold boot re-lists the Drive parent — so the first post-idle request pays boot **+** a Drive round-trip. If the parent has many children this adds to the perceived cold-start time. Bounded by Drive list latency; flag for QA timing on the deployed instance.
+- **R-D3 (HF Spaces = public Space + port 7860):** Fallback B exposes the **source** publicly and pins the container to 7860. App content is already public (D8), but source visibility may not be desired. Note before choosing HF.
+- **R-D4 (Railway not free — HostC4):** the committed `Procfile` stays valid as a process declaration, but Railway should **not** be assumed free (usage-based trial credit only). Keep it as a portability/fallback artifact, not the HostR7 answer.
+- **R-D5 (in-memory LRU resets on every cold start — host-independent):** on **any** free tier the bounded image-byte LRU + discovery map are wiped when the process recycles/spins down. This is inherent to the architecture (R2), not a host bug; the cache is a warm-session optimization, not durable state. No action needed beyond awareness; an external cache (Redis) is explicitly out of scope for M8.
+- **R-D6 (`POST /api/refresh` exposure — for SECURITY review):** the refresh endpoint mutates in-process state and triggers an outbound Drive listing with the server-side key. It currently has no documented auth. **SECURITY_ENGINEER to rule** whether it needs protection (token/header) before the app is public, or whether read-only impact + rate-limit is acceptable.
+- **R-D7 (free-tier egress vs streamed Drive bytes — HostR9):** the proxy streams image bytes through the host, counting against free-tier bandwidth/fair-use. Low traffic (HostQ5 lean) keeps this well under limits; the LRU reduces repeat Drive egress while warm. Flag if traffic expectations rise.
+- **R-D8 (HostQ4 Drive sharing must hold in prod):** the deployed `GD_API_KEY` can only read the Drive parent if it stays **"Anyone with the link → Viewer"** (D12). If access is restricted, every fetch 502s in production (cf. §11). Confirm D12 unchanged before/at deploy — a hard runtime precondition, not just a config.

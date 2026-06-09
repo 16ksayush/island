@@ -1,6 +1,6 @@
 # Requirements — Archive 19: Dual-Atmosphere Dynamic Gallery
 
-Status: **Discovery COMPLETE — design approved, asset reality confirmed (§7).** Supersedes the original single-theme blueprint. Build proceeds with placeholders (§8). **M10 — Sea (Light) landing map: BUILT, SECURITY-APPROVED, QA-VERIFIED (140 passed) — pending commit; see §10 (frontend-only; replaced the Sea island grid with a full-bleed archipelago map + hotspots; Horror untouched). Prior: Horror Atmosphere Redesign §9 (M9, shipped). After M9+M10, both themes are map-based.**
+Status: **Discovery COMPLETE — design approved, asset reality confirmed (§7).** Supersedes the original single-theme blueprint. Build proceeds with placeholders (§8). **M8 — Deploy: host CHOSEN — Render (D13); HostQ1 RESOLVED. Remaining open Qs = cold-start tolerance, domain, /api/refresh auth, Drive-sharing confirm, traffic/region (HostQ2–Q5 + R-D6) — these shape but do not block the Render deploy. Requirements in §12.** **M10 — Sea (Light) landing map: BUILT, SECURITY-APPROVED, QA-VERIFIED (140 passed) — pending commit; see §10 (frontend-only; replaced the Sea island grid with a full-bleed archipelago map + hotspots; Horror untouched). Prior: Horror Atmosphere Redesign §9 (M9, shipped). After M9+M10, both themes are map-based.**
 
 ## 1. Vision
 An interactive web app with a **variable** number of levels (0 → up to 18) presented through **two distinct, toggleable realities**. The chosen theme persists across the whole session and is switchable from any page.
@@ -46,6 +46,7 @@ An interactive web app with a **variable** number of levels (0 → up to 18) pre
 - **D9 — Asset split:** ✅ **Images in Google Drive; all audio in the GitHub repo** (`static/audio/`). The **missing-level fallback** image comes from the Drive `missing/` folder; its audio is a random LOCAL per-theme track *(updated 2026-06-09 — §11; was previously Drive `missing/` audio)*.
 - **D12 — Drive access:** ✅ The `all ages` parent folder is shared **"Anyone with the link → Viewer"**, so the plain `GD_API_KEY` can read it. No service account needed.
 - **D10 — Drive config:** ✅ A single **parent** Drive folder (one link/ID in `GD_ROOT_FOLDER`) whose children are the numbered subfolders `0..18` + `missing/`. Backend lists the parent's children to discover which levels exist → dynamic scaling.
+- **D13 — Hosting (M8):** ✅ **Render free web service** — via the committed `render.yaml` Blueprint (zero new code/config). Resolves **HostQ1**: KEEP the FastAPI Drive-proxy + in-memory-cache architecture on a persistent web-service host. **Fly.io** (Fallback A) and **Hugging Face Spaces** (Fallback B) remain documented alternatives (ARCHITECTURE §10.3); **Vercel** (serverless rework) and **GitHub Pages** (static-only, would expose the secret) are rejected. *User-decided 2026-06-09.* Remaining open Qs (HostQ2–HostQ5 + R-D6) shape the deploy but do not block starting it.
 - **D11 — Per-theme level tracks:** ✅ Horror and Sea each have their **own** per-level tracks (`static/audio/horror/`, `static/audio/sea/`). The missing-level fallback audio is a random track drawn from the **active theme's** local set *(updated 2026-06-09 — §11; previously it came from the Drive `missing/` folder)*.
 
 ## 6. Configuration variables
@@ -184,3 +185,55 @@ An illustrated fantasy **archipelago** titled "TOUR-DE-ANSHIKA": sunlit sky, **1
 - `/api/levels/{id}/photos` payload for a missing level: `available:false`, one proxied image, `fallback_audio:null`.
 
 **Scope:** `app/drive_service.py`, `app/main.py`, `templates/level.html`, + the affected `tests/test_backend.py` / `tests/test_cache.py`. No route/signature change; `fallback_audio` stays in the payload (now always `null` for missing levels). Full suite **140 passed**.
+
+---
+
+## 12. Hosting / Deployment (M8 — change request 2026-06-09)
+
+Status: **Host CHOSEN — Render (D13, user-decided 2026-06-09); HostQ1 RESOLVED.** Remaining open Qs = cold-start tolerance (HostQ2), domain (HostQ3), Drive-sharing confirm (HostQ4), traffic/region (HostQ5), and `/api/refresh` auth (R-D6) — these shape the Render deploy but do **not** block starting it. Trigger (verbatim user request): *"how are we going to host the website? Need a free hosting tool, maybe github / vercel? ask question if you have any."* This section frames the **hosting requirements + decision inputs** for **M8 (Deploy)** — the last open milestone. **Planning only; no code.** The architecture (FastAPI + Uvicorn ASGI, SSR, Drive byte-proxy, startup discovery + in-memory cache) is fixed ground truth and is NOT being re-opened by this request unless a host choice forces it (see HostC2/HostQ1). Deploy config is already committed: `render.yaml` (Render free **web service** Blueprint) + `Procfile` (Railway/Heroku-style).
+
+### 12.1 Architectural ground truth the host MUST satisfy (verified)
+The app is **NOT a static site**. It is a **persistent Python ASGI server** with state in the running process:
+- **SSR Jinja2** — the server renders every page per request and reads a `theme` cookie (no static prebuild).
+- **Google Drive byte-proxy** — the backend streams image bytes from Drive using a **server-side secret `GD_API_KEY`** (read via `os.environ`); the key MUST stay server-side and never reach the browser (hard security rule, F10). `GD_ROOT_FOLDER` is the parent-folder config.
+- **Startup discovery + in-memory cache** (FastAPI `lifespan`) — on boot it lists the Drive parent's children to discover levels and caches the level→folder map + per-level/`missing/` scope + a bounded LRU of image bytes. A manual **`POST /api/refresh`** rebuilds the cache. **This state lives in the running process** (R2).
+- **Audio** served as static files from `static/audio/`.
+- **Health check** at `/api/levels`; graceful degradation if env vars are unset (serves an empty gallery).
+
+> Implication: the natural fit is a **persistent web service**, not static hosting and not (without rework) stateless serverless functions. See HostC1/HostC2.
+
+### 12.2 Hosting requirements (HostR#)
+| # | Requirement | Type | Priority |
+|---|---|---|---|
+| HostR1 | Host MUST run a **persistent Python ASGI server** (Uvicorn, `app.main:app`) — or an equivalent long-lived process — capable of executing the `lifespan` startup discovery and holding the in-memory cache across requests (R2). | Functional | Must |
+| HostR2 | Host MUST inject **`GD_API_KEY` (secret)** and **`GD_ROOT_FOLDER` (config)** as platform environment variables, never committed to git (`sync:false` in `render.yaml`; platform vars for Railway/Procfile). | Functional | Must |
+| HostR3 | The `GD_API_KEY` MUST remain **server-side only** and never be exposed to the browser or baked into any client bundle (F10, hard security gate — SECURITY_ENGINEER veto). | Non-functional (security) | Must |
+| HostR4 | Host MUST serve over a **public HTTPS URL** (platform-provided subdomain acceptable; custom domain is an open question — HostQ3). | Non-functional | Must |
+| HostR5 | Host MUST **auto-deploy from the `main` branch** of the GitHub repo on push (`autoDeploy: true` already set in `render.yaml`). | Functional | Must |
+| HostR6 | Host MUST support a **health check** at `/api/levels` (already wired in `render.yaml` `healthCheckPath`). | Non-functional | Must |
+| HostR7 | Total recurring cost MUST be **$0 / free tier**. | Non-functional (cost) | Must |
+| HostR8 | The build MUST install from `requirements.txt` (pinned fastapi/uvicorn/starlette/jinja2/httpx/python-dotenv) on **Python 3.13** (`PYTHON_VERSION=3.13.0`). | Functional | Must |
+| HostR9 | **Cold-start / spin-down behavior** on the chosen free tier MUST be defined and accepted (free tiers commonly idle-spin-down → first-request delay). Acceptability is an open question — HostQ2. | Non-functional | Should |
+| HostR10 | Existing **CI MUST stay green** (full pytest suite, 140 passed) as a pre-deploy gate; no deploy off a red `main`. | Process | Must |
+| HostR11 | The **`missing/` fallback audio** is local (`static/audio/{theme}/`, §11) and **all audio ships in the repo** (D9), so the host MUST serve `static/` reliably; no external audio dependency at runtime. | Functional | Must |
+
+### 12.3 Static / serverless incompatibility (HostC# — decision inputs, recorded)
+| # | Constraint / finding | Verdict |
+|---|---|---|
+| HostC1 | **GitHub Pages is static-only.** It cannot run a Python server, cannot hold a server-side secret, and cannot proxy Drive bytes. It violates HostR1/HostR2/HostR3. | **NOT viable** for the current architecture without abandoning the secure proxy / re-architecting to a fully client-side app (which would then expose or remove `GD_API_KEY` — fails F10). |
+| HostC2 | **Vercel is serverless functions + static/edge.** FastAPI CAN run as a Vercel Python serverless function, BUT serverless is **stateless/ephemeral**: the startup-discovery + in-memory cache + `POST /api/refresh` model (R2) does not hold across cold invocations (each instance may re-discover; a refresh would not persist), plus cold starts and function execution/bandwidth limits on **streaming Drive bytes**. | **Possible only with rework + tradeoffs** (move discovery per-request or to external cache, accept ephemeral refresh, watch streaming limits). Not a drop-in for the committed `uvicorn` web-service model. |
+| HostC3 | **Persistent web-service hosts are the natural fit.** Candidates (for the architect's matrix): **Render** free web service (already Blueprinted; idles/spins down after ~15 min → cold-start delay on next hit), **Fly.io** (small free machine allowance, persistent), **Hugging Face Spaces** (free Docker/FastAPI, supports secrets). | **Preferred direction** — preserves HostR1–HostR3 with the committed config. |
+| HostC4 | **Railway no longer has a truly free always-on tier** (usage-based trial credit only), despite a `Procfile` already being committed for it. | **Flag:** the committed `Procfile` stays valid as a process declaration (Railway/Heroku-style), but Railway should not be assumed "free" — keep it as a fallback/portability artifact, not the primary HostR7 answer. |
+
+### 12.4 Open Questions (HostQ# — ALL RESOLVED 2026-06-09 except HostQ4, a deploy-time user precondition)
+| # | Question | Why it matters | Default / lean |
+|---|---|---|---|
+| HostQ1 | ✅ **RESOLVED (Render) — D13, 2026-06-09.** Keep the FastAPI Drive-proxy + in-memory-cache architecture on a persistent web-service host; deploy as a **Render free web service** via the committed `render.yaml`. Vercel/GitHub Pages rejected (static/serverless rework, HostC1/HostC2). | Determined the host class. | **Resolved: keep architecture → Render.** Fly.io / HF Spaces documented as fallbacks. |
+| HostQ2 | ✅ **RESOLVED (2026-06-09): accept spin-down.** Render free web service idles after ~15 min → ~30–60s cold start on next hit; accepted as-is (no keep-warm pinger). | Sets HostR9 acceptance. | **Resolved: accept free-tier spin-down.** |
+| HostQ3 | ✅ **RESOLVED (2026-06-09): custom domain via a free DNS service (FreeDNS / afraid.org).** A FreeDNS subdomain CNAMEs to the Render `*.onrender.com` host; the custom domain is added in the Render dashboard (Render issues TLS). | Custom domain adds DNS + TLS steps (D-task in M8). | **Resolved: custom domain via FreeDNS** (not the bare `*.onrender.com`). |
+| HostQ4 | **Drive sharing confirmation:** confirm the Drive parent folder stays **"Anyone with the link → Viewer"** (D12) so the deployed `GD_API_KEY` can read it from the cloud host's IPs. | If access is later restricted, the deployed proxy 502s on every fetch (cf. §11). Must be true for HostR1 to function in production. | **Lean: confirm D12 unchanged (already locked).** *(User-action precondition at deploy time.)* |
+| HostQ5 | ✅ **RESOLVED (2026-06-09): Asia → `singapore`.** Low traffic; deploy region set to Singapore in `render.yaml` (changed from `oregon`). | Region + free-tier bandwidth sanity-check. | **Resolved: low traffic, Singapore region.** |
+| R-D6 | ✅ **RESOLVED (2026-06-09): token-gate `POST /api/refresh`.** Before public launch, `/api/refresh` MUST require a shared-secret token (e.g. an `X-Refresh-Token` header matching a `REFRESH_TOKEN` env var; reject otherwise). Small **backend change** (now in scope — §12.5), routed backend-engineer → SECURITY_ENGINEER → QA_TESTER. | An open endpoint triggering Drive listing could be abused (compute/egress). | **Resolved: token-gate `/api/refresh`.** |
+
+### 12.5 In/out of scope (updated after sign-off 2026-06-09)
+The M8 diff is now: (a) **doc** updates; (b) **`render.yaml`** region `oregon → singapore` (HostQ5); (c) **one backend change** — token-gate `POST /api/refresh` with a `REFRESH_TOKEN` env var (R-D6), plus its tests; (d) **deployment + FreeDNS custom-domain runbook** in `README.md`. No frontend/route/payload/audio behavior changes; no host config beyond Render (Render chosen — D13, so no Dockerfile/fly.toml).

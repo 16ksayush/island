@@ -9,7 +9,7 @@
     </title>
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/style.css?v=5" />
   </head>
 
   <body class="theme-{{ theme }} min-h-screen">
@@ -51,11 +51,15 @@
         <div class="flex items-center gap-4">
           <a
             href="/"
-            class="theme-toggle"
-            aria-label="Back to the {% if theme == 'sea' %}island map{% else %}corridor{% endif %}"
+            class="app-logo-link"
+            aria-label="tOUR-de-Anshika — back to the {% if theme == 'sea' %}island map{% else %}corridor{% endif %} (home)"
           >
-            <span class="toggle-icon" aria-hidden="true">←</span>
-            <span>Back</span>
+            <img
+              class="app-logo"
+              src="/static/img/logo/create_thumb.png"
+              alt="tOUR-de-Anshika home"
+              decoding="async"
+            />
           </a>
           <h1 class="page-title text-2xl sm:text-3xl m-0">
             {% if theme == 'sea' %}Island{% else %}Room{% endif %} {{ level_id }}

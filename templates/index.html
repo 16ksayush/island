@@ -7,7 +7,7 @@
 
     <!-- Tailwind via CDN (layout); style.css holds theme tokens + atmosphere. -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/style.css?v=4" />
+    <link rel="stylesheet" href="/static/style.css?v=5" />
   </head>
 
   <body class="theme-{{ theme }} min-h-screen">
@@ -65,6 +65,11 @@
     } %}
     <div class="layer horror-landing">
       <h1 class="sr-only">Tour-de-Anshika — choose a destination</h1>
+
+      <!-- App brand mark, overlaid top-left (present on every page). -->
+      <a href="/" class="brand-logo" aria-label="tOUR-de-Anshika — home">
+        <img class="app-logo" src="/static/img/logo/create_thumb.png" alt="tOUR-de-Anshika" decoding="async" />
+      </a>
 
       <!-- Ambient drifting ghosts in the side margins (decorative, inert).
            Animated drift/fade; frozen under prefers-reduced-motion. -->
@@ -148,6 +153,11 @@
     } %}
     <div class="layer sea-landing">
       <h1 class="sr-only">Tour-de-Anshika — choose an island</h1>
+
+      <!-- App brand mark, overlaid top-left (present on every page). -->
+      <a href="/" class="brand-logo" aria-label="tOUR-de-Anshika — home">
+        <img class="app-logo" src="/static/img/logo/create_thumb.png" alt="tOUR-de-Anshika" decoding="async" />
+      </a>
 
       <!-- Ambient sky decoration in the margins/sky band (decorative, inert):
            drifting hot-air balloons, gliding gulls, and soft clouds. Pure

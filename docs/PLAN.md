@@ -1,6 +1,6 @@
 # Plan & Backlog — Archive 19: Dual-Atmosphere Dynamic Gallery
 
-Status: **Phase 2 EXECUTION COMPLETE — M1–M7 done, M8 (live deploy) pending. M9 Horror Atmosphere Redesign + landing map SHIPPED (2026-06-09). M10 Sea (Light) landing map (frontend-only) — BUILT + SECURITY-APPROVED + QA-VERIFIED, pending commit (2026-06-09) — see bottom section. After M9+M10 both themes are map-based.** Backend + frontend implemented, security-audited (T6/T11 APPROVED), full pytest suite green (**140 passed**, 0 failures), local `uvicorn` smoke test passing, deploy config (`render.yaml` + `Procfile`) committed. R2/R3 decisions locked (see Risk triage). Remaining: provide real `GD_API_KEY`/`GD_ROOT_FOLDER` + assets, then live verification on Render/Railway.
+Status: **Phase 2 EXECUTION COMPLETE — M1–M7 done. M8 (Deploy): host CHOSEN — Render (D13); HostQ1 RESOLVED. Remaining open Qs = cold-start tolerance, domain, /api/refresh auth, Drive-sharing confirm, traffic/region (HostQ2–Q5 + R-D6) — shape but do not block the Render deploy (see M8 section). M9 Horror Atmosphere Redesign + landing map SHIPPED (2026-06-09). M10 Sea (Light) landing map (frontend-only) — BUILT + SECURITY-APPROVED + QA-VERIFIED, pending commit (2026-06-09) — see bottom section. After M9+M10 both themes are map-based.** Backend + frontend implemented, security-audited (T6/T11 APPROVED), full pytest suite green (**140 passed**, 0 failures), local `uvicorn` smoke test passing, deploy config (`render.yaml` + `Procfile`) committed. R2/R3 decisions locked (see Risk triage). Remaining: provide real `GD_API_KEY`/`GD_ROOT_FOLDER` + assets, then live verification on Render/Railway.
 
 ## Milestones
 - [x] **M0 — Discovery:** dual-theme PRD captured; requirements, architecture, plan documented; design questions answered.
@@ -120,3 +120,37 @@ Status: **Discovery COMPLETE — requirements captured (REQUIREMENTS §10, SR1�
 
 ### Gate (M10)
 ✅ **BUILT + SECURITY-APPROVED (S6) + QA-VERIFIED (S7, full suite 140 passed / 0 failed) + PM doc-sync done (S8) — pending commit (user's call).** Phase 2 ran end to end: FRONTEND_ENGINEER S2/S3/S4/S5 → SECURITY_ENGINEER S6 → QA_TESTER S7 → PM S8. Risks: R-S1 mitigated (Horror `?calibrate` still highlights `.horror-map`, Horror landing byte-unchanged), R-S2 closed (asset 214 KB ≤ 400 KB budget), R-S4/R-S6 closed. No backend or deploy-config changes; M8 (live deploy) status is independent and unaffected. After M9+M10 both themes are map-based.
+
+---
+
+## M8 — Deploy (free-tier hosting) — Discovery (change request 2026-06-09)
+
+Status: **Host CHOSEN — Render (D13, user-decided 2026-06-09); HostQ1 RESOLVED.** The architect's host-fit matrix (ARCHITECTURE §10) verdict — **Render primary**, Fly.io / HF Spaces fallbacks, Vercel/Pages rejected — was accepted. Remaining open Qs = cold-start tolerance (HostQ2), domain (HostQ3), Drive-sharing confirm (HostQ4), traffic/region (HostQ5), and `/api/refresh` auth (R-D6) — these shape the Render deploy but do **not** block starting it. Trigger (verbatim): *"how are we going to host the website? Need a free hosting tool, maybe github / vercel? ask question if you have any."* This is the **last open milestone**. Build is complete and green (M1–M7 done; M9/M10 shipped; full suite 140 passed — CI green and must stay green, HostR10). Deploy config already committed: `render.yaml` (Render free web service Blueprint) + `Procfile` (kept as a Fly/Heroku-style portability artifact). What remains is the **Render deploy** + live verification — no feature code.
+
+### Milestone
+- [ ] **M8 — Deploy (Render, D13):** apply the committed `render.yaml` Blueprint as a Render free web service (satisfies HostR1–HostR11 — persistent Python ASGI server, server-side `GD_API_KEY`, public HTTPS, auto-deploy from `main`, `/api/levels` health check, $0); set `GD_API_KEY` (secret) + `GD_ROOT_FOLDER` (config) in the Render dashboard; deploy from `main`; live-verify both themes + `/level/{id}` (missing + available) + theme toggle + real Drive content + `POST /api/refresh`; document the deploy runbook in `README.md`. **Host chosen; remaining open Qs HostQ2–Q5 + R-D6 shape the deploy but do not block it.**
+
+### Host-class summary (full analysis → ARCHITECTURE, next)
+- **GitHub Pages** — static-only → **NOT viable** (fails HostR1/R2/R3; HostC1).
+- **Vercel** — serverless; FastAPI runs but the startup-discovery + in-memory cache + `POST /api/refresh` model is stateless/ephemeral → **rework + tradeoffs** (HostC2).
+- **Render** (free web service) — **already Blueprinted**; persistent; idle spin-down ~15 min → cold start (HostC3, HostQ2). **Lean default for HostQ1.**
+- **Fly.io / Hugging Face Spaces** — persistent free options; would need a `Dockerfile`/`fly.toml` (HostC3).
+- **Railway** — `Procfile` committed but **no longer truly free always-on** (HostC4) → fallback/portability artifact, not the HostR7 answer.
+
+### Sequenced backlog (M8 — Render path; host chosen D13)
+Legend: **[USER]** = action only the user can take (account, real secret, Drive setting); **[AUTO]** = automatable / PM- or platform-driven.
+| # | Task | Owner | Depends on |
+|---|---|---|---|
+| D0 | **✅ DONE — Host requirements + open questions captured** (REQUIREMENTS §12). | project-manager | M7, §12 |
+| D1 | **✅ DONE — Host-fit decision matrix** (ARCHITECTURE §10): Render primary, Fly.io / HF Spaces fallbacks, Vercel/Pages rejected. | solutions-architect | D0 |
+| D2 | **✅ DONE — HostQ1 RESOLVED → Render (D13, user-decided 2026-06-09).** HostQ2–Q5 + R-D6 carried as shaping (non-blocking) questions in the Discovery Report. | project-manager + user | D1 |
+| D3 | **[USER] Confirm Drive precondition + real credentials ready** — Drive parent stays **"Anyone with link → Viewer"** (HostQ4 / D12 — hard runtime precondition, else every fetch 502s); real `GD_API_KEY` + `GD_ROOT_FOLDER` values in hand. Confirm CI is green on `main` (HostR10) and stays green. | project-manager + user | D2 |
+| D4 | **[USER] Apply the `render.yaml` Blueprint** — in the Render dashboard: **New + → Blueprint**, point at this GitHub repo on `main`; Render reads the committed `render.yaml` (no new code/config). Requires a (free) Render account connected to GitHub. | project-manager (guides) + user | D3 |
+| D5 | **[USER] Set env vars in the Render dashboard** — `GD_API_KEY` as a **secret** and `GD_ROOT_FOLDER` as config (both `sync:false` → Render prompts). Never committed (HostR2/HostR3). Pick region per HostQ5; subdomain vs custom domain per HostQ3. | project-manager (guides) + user | D4 |
+| D6 | **[AUTO] First deploy + health check** — Render auto-builds from `main` (`pip install -r requirements.txt` on Python 3.13, HostR8) and runs `uvicorn app.main:app`; `lifespan` discovery builds the cache; Render polls **`/api/levels`** until healthy (HostR5/HostR6). Auto on push thereafter. | project-manager (+ render) | D5 |
+| D7 | **[AUTO+USER] Live verification** — public HTTPS URL loads; **both themes** (Horror + Sea maps) render and **theme toggle** persists; `/level/{id}` works for a **missing-fallback** level **and** an **available** level; real **Drive image content** streams through the proxy (**key never in browser**, HostR3); audio plays from `static/`; observe/accept **cold-start** behavior (HostQ2/HostR9, R-D5). | project-manager (+ qa-tester) | D6 |
+| D8 | **[USER, post-Drive] `POST /api/refresh` once Drive is wired** — one-off `POST https://<app>.onrender.com/api/refresh` to rebuild the discovery map/cache without a redeploy (R2). **Gated on R-D6** (SECURITY): decide auth before public launch — see §10.5. On a spin-down host the cache rebuilds on every cold start anyway. | project-manager + user | D7 |
+| D9 | **[AUTO] Document the Render deploy runbook** in `README.md` (Blueprint apply, env-var setup, deploy + `/api/refresh` steps, cold-start note, Drive-sharing precondition) — keep docs in sync (Documentation Policy). | project-manager | D7 |
+
+### Gate (M8)
+✅ **Host CHOSEN — Render (D13); Discovery COMPLETE + SIGNED OFF (2026-06-09).** All HostQs resolved: **HostQ2** accept free-tier spin-down; **HostQ3** custom domain via **FreeDNS** (CNAME → `*.onrender.com`, custom domain added in Render); **HostQ5** region **Singapore**; **R-D6** token-gate `POST /api/refresh` (`REFRESH_TOKEN` env var). HostQ4 (keep Drive parent "Anyone with link → Viewer") is a deploy-time user precondition. **Execution-phase diff (M8):** (1) `render.yaml` region `oregon → singapore`; (2) backend token-gate on `/api/refresh` + tests (backend-engineer → SECURITY_ENGINEER → QA_TESTER); (3) `README.md` Render + FreeDNS runbook; (4) the Render deploy itself + live verification. On "go": run the Render deploy + the R-D6 backend change via `orchestrate-build`. CI is green and must stay green (HostR10).
