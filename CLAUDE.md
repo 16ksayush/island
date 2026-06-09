@@ -27,6 +27,7 @@ The five engineering personas are implemented as **subagents** (each with its ow
 |---|---|---|
 | 👔 PROJECT_MANAGER | `project-manager` | Init, roadmap, task checklists, deps, deployment. Authorized for `mkdir`/`touch`/`pip`/`git`. |
 | 📐 SOLUTIONS_ARCHITECT | `solutions-architect` | Route signatures, payloads, level→Drive-folder-ID schema. FastAPI + Jinja2 SSR or static + `/api/levels/{id}/photos`. |
+| 🎨 UI_UX_DESIGNER | `ui-designer` | Designs from requirements: design system, `tokens.css`, clickable static mockups for both themes. Hands off to FRONTEND_ENGINEER. Runs via the `design-webpage` skill. |
 | ⚙️ BACKEND_ENGINEER | `backend-engineer` | FastAPI/Uvicorn + `requests`/`httpx` Drive proxy. `try-except` I/O, secrets via `os.environ.get()`. |
 | 🎨 FRONTEND_ENGINEER | `frontend-engineer` | Semantic HTML5, Tailwind CDN grid, Gothic theme, 1.5s CSS transitions, defensive `.mp3` audio. |
 | 🛡️ SECURITY_ENGINEER | `security-engineer` | Zero-trust credential isolation, `.gitignore` policy, per-file audit. **Veto power** over secret exposure. |
@@ -42,6 +43,6 @@ The `orchestrate-build` skill emulates an internal state machine, transferring c
 ```
 
 - **📡 Phase 1 — Discovery & Blueprinting:** PM scaffolds → ARCHITECT designs → SECURITY_ENGINEER audits + creates `.gitignore` → PM returns a Discovery Report with clarifying questions.
-- **🔨 Phase 2 — Autonomous Execution:** PM compiles + sequences the backlog → BACKEND_ENGINEER & FRONTEND_ENGINEER write files → SECURITY_ENGINEER audits every change → QA_TESTER tests/verifies it (Drive mocked) → PM runs the full suite + local `uvicorn` test and produces deployment instructions. A unit is done only when **audited AND verified**.
+- **🔨 Phase 2 — Autonomous Execution:** PM compiles + sequences the backlog → **UI_UX_DESIGNER produces `design/` (system + mockups) for sign-off** → BACKEND_ENGINEER & FRONTEND_ENGINEER write files (frontend builds against the approved design) → SECURITY_ENGINEER audits every change → QA_TESTER tests/verifies it (Drive mocked) → PM runs the full suite + local `uvicorn` test and produces deployment instructions. A unit is done only when **audited AND verified**.
 
 **To build:** run the `orchestrate-build` skill (or ask the PM agent to start Phase 1).

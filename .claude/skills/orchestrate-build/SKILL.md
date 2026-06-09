@@ -23,6 +23,7 @@ Map persona names to subagents:
 |---|---|
 | PM | `project-manager` |
 | ARCHITECT | `solutions-architect` |
+| UI_UX_DESIGNER | `ui-designer` |
 | BACKEND_ENGINEER | `backend-engineer` |
 | FRONTEND_ENGINEER | `frontend-engineer` |
 | SECURITY_ENGINEER | `security-engineer` |
@@ -37,7 +38,8 @@ Map persona names to subagents:
 
 ## Phase 2 — Autonomous Execution Loop
 1. After user sign-off, dispatch **PM** to compile the Task Backlog.
-2. **PM** sequences tasks and dispatches **BACKEND_ENGINEER** and **FRONTEND_ENGINEER** to write/modify files in the project directory.
+2. **Design first (UI track):** dispatch **UI_UX_DESIGNER** (via the `design-webpage` skill) to turn the gathered requirements into `design/` artifacts (design system, `tokens.css`, static mockups for both themes) and get the user's look/feel sign-off. The **FRONTEND_ENGINEER builds against the approved design** — do not implement templates before the design is approved. (The BACKEND_ENGINEER track can proceed in parallel; it has no design dependency.)
+3. **PM** sequences tasks and dispatches **BACKEND_ENGINEER** and **FRONTEND_ENGINEER** to write/modify files in the project directory.
 3. After every file is written or altered, dispatch **SECURITY_ENGINEER** to audit it BEFORE the lines are frozen. Honor its veto — remediate before continuing.
 4. Once a unit of work passes the security audit, dispatch **QA_TESTER** to write/run automated tests (pytest + TestClient, Drive mocked) and verify it against the requirements. A unit is **not frozen until tests pass**. On failure, hand the defect back to the owning engineer (step 2) and re-audit/re-test.
 5. **PM** runs the full test suite + local `uvicorn` smoke test, tracks completeness, and produces Render/Railway deployment instructions (env vars: `GD_API_KEY`, `GD_ROOT_FOLDER`).
