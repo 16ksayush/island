@@ -31,3 +31,28 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -q
+
+      # Trigger the Render deploy ONLY after the suite passes, and ONLY on a
+      # push to main (never on PRs). This is the reliable "deploy after CI
+      # passes" path: GitHub Actions calls Render's Deploy Hook directly, so it
+      # does not depend on Render watching GitHub checks (which is flaky and
+      # was leaving commits undeployed until a manual deploy).
+      #
+      # Setup (one-time):
+      #   1. Render dashboard -> your service -> Settings -> Deploy Hook -> copy URL.
+      #   2. GitHub repo -> Settings -> Secrets and variables -> Actions ->
+      #      add secret RENDER_DEPLOY_HOOK = that URL.
+      #   3. Render dashboard -> Settings -> set Auto-Deploy to "Off" (so this
+      #      hook is the ONLY trigger and you don't get double deploys).
+      # Until the secret is set this step no-ops, so it never breaks CI.
+      - name: Trigger Render deploy (main only, after tests pass)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK secret not set; skipping deploy trigger."
+            exit 0
+          fi
+          curl -fsSL "$RENDER_DEPLOY_HOOK" > /dev/null
+          echo "Render deploy triggered after green CI."

@@ -14,6 +14,12 @@ services:
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # NOTE: autoDeploy here only applies if this service is BLUEPRINT-managed.
+    # For a manually-created Web Service it is ignored — the dashboard setting
+    # wins. We deploy via a Render Deploy Hook called from CI after the suite
+    # passes (see .github/workflows/ci.yml + README "Auto-deploy after CI
+    # passes"); set the dashboard Auto-Deploy to "Off" so the hook is the only
+    # trigger.
     autoDeploy: true
     healthCheckPath: /api/levels
     envVars:

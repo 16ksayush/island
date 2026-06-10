@@ -185,6 +185,17 @@ Both platforms build from `requirements.txt` (just `pip install`) and run the st
    - `CLOUDINARY_URL` — your Cloudinary connection string `cloudinary://<api_key>:<api_secret>@<cloud_name>` (secret). The `api_secret` is used server-side only for the Admin list; image delivery is keyless.
 4. Deploy. The build is just `pip install -r requirements.txt` (no bake step). At startup the app makes one Cloudinary Admin list; `IMAGE_SYNC_INTERVAL_SECONDS=1800` (declared in `render.yaml`) re-lists metadata every 30 min so new images appear without a redeploy. Health check hits `/api/levels`. Visit the assigned `*.onrender.com` URL.
 
+### Auto-deploy after CI passes (Deploy Hook)
+
+`render.yaml`'s `autoDeploy: true` only applies to a **Blueprint-managed** service. If the service was created manually (**New + → Web Service**), that flag is ignored and the dashboard's Auto-Deploy setting wins — and Render's **"After CI Checks Pass"** mode (which watches GitHub checks over a webhook) is unreliable and can leave green commits undeployed until a manual deploy.
+
+The robust fix, wired into [`ci.yml`](.github/workflows/ci.yml): GitHub Actions calls a Render **Deploy Hook** as its last step, **only after pytest passes on a push to `main`**. One-time setup:
+1. Render dashboard → your service → **Settings → Deploy Hook** → copy the URL.
+2. GitHub repo → **Settings → Secrets and variables → Actions** → add secret **`RENDER_DEPLOY_HOOK`** = that URL.
+3. Render dashboard → **Settings → Auto-Deploy → Off** (so the hook is the only trigger — no double deploys).
+
+Until the secret is set, the CI step no-ops (never breaks the build). After it's set, every green push to `main` auto-deploys.
+
 ### Railway (`Procfile`)
 
 1. **New Project → Deploy from GitHub repo**; Railway auto-detects Python and the `Procfile` `web:` process.
