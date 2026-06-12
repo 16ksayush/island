@@ -47,6 +47,8 @@ Existing-level audio is loaded directly from /static/audio/... (no external call
 | GET (static) | `/static/audio/global/{theme}_ambient.mp3` | Landing ambient per theme. | audio/mpeg |
 | GET (static) | `/static/audio/{theme}/level_{id}.mp3` | Per-level track (per-theme, D11). | audio/mpeg |
 
+> **§16 (M15) — Level 18 song-synced lyrics:** `/level/18` only renders a `<section class="lyrics-sync">` below the slideshow (both themes; same `level_18.mp3` song). Lyrics are gated server-side (`{% if level_id == 18 %}`) and driven client-side by a `timeupdate` hook on the level audio element; line timing is a `SECTIONS` array of absolute-second windows from the song's cue sheet (160s). Two cursive Google Fonts (`Pirata One` Horror / `Tangerine` Sea) load on this level only. Frontend-only — no route, payload, or audio-engine change.
+
 ### 4.1 Payload schemas (JSON)
 > **⚠️ §13 (M13):** the `url` field below is now an absolute **keyless Cloudinary CDN URL** (`https://res.cloudinary.com/{cloud}/image/upload/f_auto,q_auto/{public_id}.{fmt}`) instead of the `/api/levels/{id}/media/{file_id}` proxy path. The object shape (`file_id` + `url` + optional `caption`) and the `available`/`fallback_audio` semantics are otherwise unchanged. `file_id` is now the Cloudinary `public_id`.
 `GET /api/levels` →

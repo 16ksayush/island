@@ -9,7 +9,18 @@
     </title>
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/static/style.css?v=7" />
+    {% if level_id == 18 %}
+    <!-- Level 18 only: cursive display faces for the song-synced lyrics —
+         Pirata One (gothic gold hand-lettering, Horror) + Tangerine (elegant
+         mythical calligraphy, Sea). Loaded here so other levels stay lean. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Tangerine:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    {% endif %}
+    <link rel="stylesheet" href="/static/style.css?v=8" />
   </head>
 
   <body class="theme-{{ theme }} min-h-screen">
@@ -240,6 +251,17 @@
         </div>
       </main>
 
+      {% if level_id == 18 %}
+      <!-- Level 18 only: song-synced lyrics, a little below the image viewer.
+           Same song in both themes; the active line tracks the audio's
+           currentTime. Theme styling (Horror gold gothic / Sea azure mythical)
+           is applied via .theme-horror/.theme-sea in style.css. -->
+      <section class="lyrics-sync layer" id="lyrics-sync" aria-hidden="true">
+        <p class="lyrics-line lyrics-line--current" id="lyrics-current"></p>
+        <p class="lyrics-line lyrics-line--next" id="lyrics-next"></p>
+      </section>
+      {% endif %}
+
       <footer class="mt-12 text-center muted text-xs">
         Tour-de-Anshika · Level {{ level_id }}
       </footer>
@@ -418,10 +440,143 @@
           if (src) window.Archive19Audio.crossfadeToLevel(src);
         }
 
+        // ---- Level 18 only: song-synced lyrics -----------------------------
+        // The lyrics for "My Chudail" (same song in both themes). Each entry is
+        // [position, "line"]. `position` is either an absolute timestamp in
+        // SECONDS (any value > 1) or, when <= 1, a FRACTION of the song's total
+        // duration. Fractions auto-adapt to whatever the real mp3 length is, so
+        // the lines spread evenly across the track even though we don't ship a
+        // hand-timed cue sheet. To fine-tune, replace a line's fraction with the
+        // exact second it is sung (e.g. 42.5) — values > 1 are read as seconds.
+        function initLyrics18(audioEl) {
+          if (!audioEl) return;
+
+          var current = document.getElementById("lyrics-current");
+          var nextEl = document.getElementById("lyrics-next");
+          var box = document.getElementById("lyrics-sync");
+          if (!current || !nextEl || !box) return;
+
+          // Section-anchored timing from the official cue sheet (total 02:40 /
+          // 160s; intro 0:00–0:16 is instrumental). Each section gives a
+          // [start, end] window in SECONDS and its lyric lines; lines are spread
+          // evenly across the window. To tighten a single line, move it into its
+          // own one-line section with the exact second it is sung.
+          var SECTIONS = [
+            // Verse 1 — 0:16–0:48
+            { start: 16, end: 48, lines: [
+              "The shackles of your youth have shattered at the gate,",
+              "A sorceress ascends to claim her rightful fate.",
+              "No longer 'illegal,' the scrolls are signed in gold,",
+              "Eighteen rings of power, a destiny unfold.",
+              "Congratulations, my chudail, the kingdom sings your name,",
+              "But in this epic saga, you're the master of the flame.",
+            ] },
+            // Chorus — 0:48–1:12
+            { start: 48, end: 72, lines: [
+              "Stand tall within the fortress, you'll find me in your corner,",
+              "Unless I start my teasing, then I'm the tactical mourner.",
+              "Burn the map of doubters if they block the path to light,",
+              "But face the truth, my chudail — you're wrong, and I am right!",
+              "Yeah, always wrong, my chudail, and I am always right!",
+            ] },
+            // Verse 2 — 1:12–1:36
+            { start: 72, end: 96, lines: [
+              "The dragons of the exams breathe fire on your shield,",
+              "A soldier doesn't tremble, a warrior doesn't yield.",
+              "The wars are never finished, the steel is always bright,",
+              "Wear a smile upon your face, and lead the charge tonight.",
+              "Burn the world to ash if they stand against your sway,",
+              "My fierce chudail, you're the storm that's coming anyway!",
+            ] },
+            // Verse 3 (atmospheric breakdown) — 1:36–1:56
+            { start: 96, end: 116, lines: [
+              "Keep the crystal portal open, true as heart to soul,",
+              "No distance or dimensions can make the spirits toll.",
+              "Age, gender, or location — they're phantoms in the haze,",
+              "Our tether stays unbroken through the labyrinthine maze.",
+              "Communion of the legends, our binding remains strong,",
+              "You are my chudail, and you've known it all along.",
+            ] },
+            // Bridge (grand crescendo) — 1:56–2:20
+            { start: 116, end: 140, lines: [
+              "And if your boots grow heavy on this treacherous terrain,",
+              "And fatigue clouds your vision like the falling winter rain,",
+              "Look back toward the vanguard, I'll be cheering from the crest,",
+              "Providing only guidance, letting you endure the test.",
+              "Because the blade you carry must be held by your own hand,",
+              "To forge your own dominion in this harsh and hallowed land.",
+            ] },
+            // Outro (climax) — 2:20–2:40
+            { start: 140, end: 160, lines: [
+              "Welcome to the franchise, to the universal throne,",
+              "A legal chudail rises, claiming what you own.",
+              "But etch this final edict, keep it shining, keep it tight —",
+              "You are always wrong, my chudail, and I am always right.",
+              "Happy 18th Birthday! The war is just beginning!",
+            ] },
+          ];
+
+          // Flatten sections into absolute-second cues (even spread per window).
+          var cues = [];
+          SECTIONS.forEach(function (sec) {
+            var span = sec.end - sec.start;
+            var n = sec.lines.length;
+            sec.lines.forEach(function (text, i) {
+              cues.push({ pos: sec.start + (span * i) / n, text: text });
+            });
+          });
+
+          // Resolve a cue's position to seconds. Values > 1 are absolute
+          // seconds; values <= 1 are treated as a fraction of the song length.
+          function cueTime(cue, duration) {
+            return cue.pos > 1 ? cue.pos : cue.pos * duration;
+          }
+
+          var shown = -1;
+          function update() {
+            var duration = audioEl.duration;
+            if (!duration || !isFinite(duration)) return;
+            var t = audioEl.currentTime;
+
+            // Find the latest cue whose time has passed.
+            var idx = -1;
+            for (var i = 0; i < cues.length; i++) {
+              if (cueTime(cues[i], duration) <= t) idx = i;
+              else break;
+            }
+            if (idx === shown) return;
+            shown = idx;
+
+            if (idx < 0) {
+              box.classList.remove("is-active");
+              current.textContent = "";
+              nextEl.textContent = "";
+              return;
+            }
+            box.classList.add("is-active");
+            // Retrigger the fade-in animation on each line change.
+            current.classList.remove("lyrics-anim");
+            void current.offsetWidth; // reflow so the animation replays
+            current.textContent = cues[idx].text;
+            current.classList.add("lyrics-anim");
+            nextEl.textContent =
+              idx + 1 < cues.length ? cues[idx + 1].text : "";
+          }
+
+          audioEl.addEventListener("timeupdate", update);
+          audioEl.addEventListener("seeked", update);
+          audioEl.addEventListener("loadedmetadata", update);
+        }
+
         // Seed the ambient channel so the crossfade has something to wind down
         // (it carries over visually/aurally from the landing where possible).
         if (window.Archive19Audio) {
           window.Archive19Audio.playAmbient(theme);
+        }
+
+        // Level 18 carries the birthday song with synced on-screen lyrics.
+        if (levelId === 18 && window.Archive19Audio) {
+          initLyrics18(window.Archive19Audio.level.el);
         }
 
         fetch("/api/levels/" + levelId + "/photos", {

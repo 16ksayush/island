@@ -1452,6 +1452,112 @@ a {
   }
 }
 
+/* =========================================================================
+   Level 18 — song-synced lyrics (both themes share the song)
+   Sits a little below the image viewer. The active line fades in as the
+   audio reaches each cue; the upcoming line trails faintly beneath it.
+   Horror: Pirata One, molten-gold gothic hand-lettering with an eerie glow.
+   Sea:    Tangerine, elegant azure mythical calligraphy with a soft luminance.
+   ========================================================================= */
+.lyrics-sync {
+  margin: 1.75rem auto 0;
+  max-width: 46rem;
+  min-height: 5.5rem; /* reserve space so the layout doesn't jump per line */
+  padding: 0 1rem;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+.lyrics-sync.is-active {
+  opacity: 1;
+}
+
+.lyrics-line {
+  margin: 0;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.lyrics-line--current {
+  font-size: clamp(1.6rem, 4.5vw, 2.6rem);
+}
+
+.lyrics-line--next {
+  margin-top: 0.45rem;
+  font-size: clamp(1.05rem, 2.6vw, 1.5rem);
+  opacity: 0.4;
+}
+
+/* The current line replays this fade/rise each time it changes. */
+.lyrics-anim {
+  animation: lyrics-rise 0.9s ease both;
+}
+@keyframes lyrics-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.4rem);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Horror skin: gilded gothic scrawl with a candle-lit amber glow. */
+.theme-horror .lyrics-line {
+  font-family: "Pirata One", "Georgia", serif;
+  letter-spacing: 0.01em;
+}
+.theme-horror .lyrics-line--current {
+  color: #ffd98a;
+  text-shadow: 0 0 6px rgba(255, 176, 0, 0.55), 0 0 22px rgba(255, 130, 0, 0.35),
+    0 2px 4px rgba(0, 0, 0, 0.9);
+}
+.theme-horror .lyrics-line--next {
+  color: #c79a5b;
+}
+/* Candle flicker rides the whole lyric area so the per-line `.lyrics-anim`
+   rise (toggled by JS) stays free to retrigger on every line change. */
+.theme-horror .lyrics-sync.is-active {
+  animation: horror-flicker 5.5s infinite;
+}
+/* Subtle, irregular candle flicker on the glow (never fully dark). */
+@keyframes horror-flicker {
+  0%, 100% { opacity: 1; }
+  43% { opacity: 1; }
+  47% { opacity: 0.82; }
+  49% { opacity: 1; }
+  72% { opacity: 0.9; }
+  74% { opacity: 1; }
+}
+
+/* Sea skin: flowing mythical calligraphy with a soft sunlit luminance. */
+.theme-sea .lyrics-line {
+  font-family: "Tangerine", "Georgia", cursive;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+}
+.theme-sea .lyrics-line--current {
+  color: #06324d;
+  font-size: clamp(2.1rem, 6vw, 3.6rem); /* Tangerine reads small — scale up */
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.85),
+    0 1px 2px rgba(2, 132, 199, 0.35);
+}
+.theme-sea .lyrics-line--next {
+  color: #2b6f99;
+  font-size: clamp(1.4rem, 3.6vw, 2.1rem);
+}
+
+/* Respect reduced-motion: drop the rise/flicker, keep the line legible. */
+@media (prefers-reduced-motion: reduce) {
+  .lyrics-anim,
+  .theme-horror .lyrics-sync.is-active {
+    animation: none;
+  }
+}
+
 .slide-loading,
 .slide-message {
   flex: 0 0 100%;
