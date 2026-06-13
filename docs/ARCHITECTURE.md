@@ -1016,3 +1016,191 @@ Every `level.html` contract the suite asserts (enumerated in REQUIREMENTS §16.2
 - **A3 (verify the decor selector scoping at L4/L7).** The reuse-without-leak plan (§14.3) assumes the ambient leaf rules are authored as `.theme-sea .sea-balloon { … }` (theme-scoped, container-agnostic) — confirmed for the keyframes + width/opacity rules, but the per-instance `top/left`/timing rules (`.sea-balloon--0 { left:5%; top:30% }`) are positioned for the LANDING's full-bleed map. The level page will likely want its OWN per-instance positions (a small set of `.theme-sea .level-ambient .sea-balloon--N` overrides), which must be ADDED, never edited onto the landing rule. QA (L7) must confirm the Sea/Horror LANDING decor is visually unchanged.
 - **A4 (no per-level variation).** The recommendation is uniform-per-theme (one room, one shore). If the user expected each island/room to look different per number, that reopens Q-M14-6 → Q-M14-7 (one additive SSR var) and expands the art/CSS effort. **Confirm "uniform is fine for M14."**
 - **A5 (frame asset vs CSS).** Q-M14-3 recommended as pure CSS/SVG. If the user wants a photographed gilded/driftwood frame texture, that adds a (small) raster asset per theme — flag the same budget/`decoding` handling as A1.
+
+---
+
+# 17. M16 — Chest-chooser gateway landing (change request — 2026-06-13)
+
+Status: **BUILT + SECURITY-APPROVED + QA-VERIFIED (full suite 220 passed) — pending commit (2026-06-13).** Decisions D14–D24 below were all implemented as designed, with ONE revision (D24, see below). This was the **first route/SSR change since M13** — `app/main.py` was touched (new neutral `/` gateway + two relocated map subpages). Scope was the gateway landing + route relocation; the maps (§9/§10), level pages (§14/§16-M15), Cloudinary source (§13), payloads (§4.1), and audio engine (§6) were NOT redesigned — only the maps' *route* moved. Requirements: REQUIREMENTS §17 (M16R1–M16R15, NF-M16-1…9, Q-M16-1…12, R-M16-1…6). The D1/D3 cookie+sessionStorage contract (`static/theme.js`, §1) is ground truth and was preserved verbatim.
+
+**As-built (2026-06-13):**
+- **`app/main.py`:** old `index()` → `gateway(request)` at `/` (renders `gateway.html` with an EMPTY context, NO `read_theme` — D16/D14); a `_map(request, theme)` helper + thin `map_horror()` (`/map/horror`) / `map_sea()` (`/map/sea`) handlers that render the EXISTING `index.html` with a FORCED `theme` literal + `_levels_payload()` (D15/D18); NO redirects (D17). `read_theme`/`_levels_payload`/`_local_audio_ids`/lifespan/`/level/{id}`/`/api/*` untouched.
+- **`templates/gateway.html`** (NEW): `<html lang="en" data-theme-neutral>` (no `.theme-*` class — D16), `style.css?v=9`, a **painted RASTER backdrop image** `static/img/gateway/gateway-bg.jpg` (~369 KB, `decoding="async"`) + a scrim, the transparent lowered cursive "choose a chest" caption (`Cinzel Decorative`, non-blocking Google-Font load), three symbol-only chest `<button>`s (moon/half-sun-moon/sun, middle largest, `aria-label`led), the brand logo top-left, loads `theme.js` then `static/gateway.js`.
+- **`templates/index.html`:** `<html>` gained `data-force-theme="{{ theme }}"` (the route-forced-theme signal for theme.js); reused byte-for-byte at both subpages; `style.css?v=8`→`?v=9`.
+- **`static/theme.js`:** added the additive no-reload **`Archive19Theme.choose(theme)`** writer (writeCookie+writeSession, no reload — D19); a **neutral-gateway guard** (`data-theme-neutral` → expose the API only, NEVER reconcile/applyClass — D16); and **forced-theme + map-toggle** behavior (`data-force-theme` → align cookie to the SSR-forced theme on arrival (D23) and wire the in-page toggle to navigate to the OTHER `/map/{theme}` — the toggle switches MAPS on the subpages). `reconcile()` core unchanged; level-page behavior unchanged.
+- **`static/gateway.js`** (NEW, D20): chest wiring + per-click chest-2 `Math.random()<0.5` resolution (D21) driving BOTH reveal art + destination; `choose(theme)` → reveal → `location.assign("/map/horror"|"/map/sea")` with the `hasNavigated`-guarded `animationend`+fallback-timer handoff (D24/R-M16-9); reduced-motion instant-resolve skip (D22); optional gesture-gated gateway ambient (`static/audio/global/gateway_ambient.mp3`), fail-silent.
+- **Version:** `static/style.css?v=8` → `?v=9` on `index.html`, `level.html`, `gateway.html`.
+- **REVISION — D24 (reveal art / asset strategy):** D24 originally specified **pure CSS + inline-SVG** ghost/cake reveal art (Q-M16-3 default, NF-M16-3). As built, the gateway uses a **painted RASTER backdrop image** (`static/img/gateway/gateway-bg.jpg`, ~369 KB) + scrim instead — mirroring the M9/M10 landing maps (the project's only other sizeable rasters) and staying within the ≤300–400 KB-class budget NF-M16-3 reserves for an opted-in raster. The raster is `decoding="async"`, non-render-blocking, and does not gate the gateway audio or the index/level prefetch paths. **Any "pure CSS + inline SVG only" statement for the gateway in §17.2/§17.5 is superseded by this D24 revision: the gateway is allowed a budgeted raster backdrop like the landing maps.** All other decisions stand as designed.
+
+## 17.1 Route topology & SSR decision
+
+**Decision D14 — `/` becomes a theme-neutral SSR gateway; the two maps relocate to `/map/horror` and `/map/sea` (Q-M16-4).** *(User pick at G2 sign-off, 2026-06-13: the `/map/{theme}` namespace was chosen over the architect's recommended bare `/horror`+`/sea`. Everything below uses `/map/horror`+`/map/sea`.)* Keep SSR Jinja2 (NOT static) — consistent with the whole app (§1, §4): the maps already SSR the theme class from the cookie (`read_theme`) to paint flash-free, the gateway is one more Jinja2 template, and a static gateway would forgo the `read_theme`-free neutral render guarantee we want. The gateway itself reads NO cookie for its own styling (D16/Q-M16-12), but staying in the SSR pipeline keeps one rendering model and lets the subpages reuse the existing index render byte-for-byte.
+
+**Recommended route table (as-built target):**
+
+| Method | Path | Renders | Theme source | Notes |
+|---|---|---|---|---|
+| GET | `/` | `gateway.html` (NEW) | **none** — theme-neutral always (D16) | The chest-chooser. Ignores any existing `theme` cookie for its OWN render (Q-M16-12 / NF-M16-4). Always the gateway; never a map again (Q-M16-4 → D14). |
+| GET | `/map/horror` | the map (today's index Horror arm) | **forced `horror`** (D15) | Horror archipelago/haunted map (§9). Deep-linkable standalone (M16R13). |
+| GET | `/map/sea` | the map (today's index Sea arm) | **forced `sea`** (D15) | Sea map (§10). Deep-linkable standalone (M16R13). |
+| GET | `/level/{level_id}` | `level.html` | `read_theme` cookie (unchanged) | UNCHANGED — M14/M15/M11/M13 all intact (NF-M16-5). |
+| GET | `/api/levels` · `/api/levels/{id}/photos` · POST `/api/refresh` | JSON | n/a | UNCHANGED (§4/§4.1). |
+
+**Decision D15 — the subpages FORCE their theme (do not depend on the cookie).** `/map/horror` renders `theme="horror"`, `/map/sea` renders `theme="sea"`, regardless of the cookie — so a deep-link is correct standalone AND a cookie/route mismatch (cookie says sea, user opens `/map/horror`) can't paint the wrong theme. **The subpage handler ALSO writes the matching cookie client-side on arrival** (a tiny inline reconcile via `theme.js`, see §17.3) so the in-page toggle, `/level/{id}` SSR, and audio engine all agree (M16R13 / Q-M16-8). This is cleaner than reading the cookie on the subpage: the route name is the source of truth for which map shows.
+
+**Decision D17 — no redirects (Q-M16-8).** `/` never 301/302s anywhere (it's always the gateway, even with a stored cookie — Q-M16-7 lean). The subpages don't redirect either. This keeps SSR trivially cacheable and avoids redirect loops. (If the user later wants "skip the gateway for returning visitors," that's a client-side `location.replace` decision on the gateway, NOT a server redirect — flagged under Q-M16-7.)
+
+**FastAPI route signatures (target shape — backend-engineer owns the body):**
+```python
+@app.get("/")                      def gateway(request: Request)        # theme-neutral; NO read_theme
+@app.get("/map/horror")            def map_horror(request: Request)     # forces theme="horror"
+@app.get("/map/sea")               def map_sea(request: Request)        # forces theme="sea"
+@app.get("/level/{level_id}")      def level_page(request: Request, level_id: int)   # UNCHANGED
+# /api/* all UNCHANGED. read_theme(), _levels_payload(), _local_audio_ids() all UNCHANGED.
+```
+`read_theme` (§1, D1/D3) is **untouched** — it is simply no longer called by `/` (the gateway is neutral), and the two map handlers pass a literal theme instead of calling it. `/level/{id}` keeps calling it exactly as today.
+
+## 17.2 Template split
+
+**Decision D18 — add `templates/gateway.html` (NEW, neutral) + serve the EXISTING `index.html` map at BOTH subpages, parameterized by a forced `theme`.** `index.html` already branches `{% if theme != 'sea' %}…{% else %}…{% endif %}` (§9.2) and takes `theme` + `levels`; we do NOT refactor it. Both subpage handlers render `index.html` with the SAME context dict shape as today (`{"theme": <forced>, "levels": _levels_payload()}`), so the map markup, hotspots, `coords`/`sea_coords`, calibrate JS, and `.atmosphere` block are byte-identical to the current `/` output — only the URL that serves them changed. This is the lowest-risk way to satisfy NF-M16-5 ("byte-/behavior-identical, only relocated").
+
+- The subpage handler passes a literal theme, so `index.html`'s top-level `{% if theme != 'sea' %}` picks the right arm with no cookie read. The `<html class="theme-{{ theme }}">` line is unchanged; the forced value makes it `theme-horror` on `/map/horror` and `theme-sea` on `/map/sea`.
+- **`gateway.html` is a NEW standalone template** in a scoped `.gateway` namespace (NF-M16-6): a `<html lang="en">` with **no `.theme-*` class** on `<html>`/`<body>` (the neutral signal — D16), Tailwind CDN + `style.css?v=9` (bumped, NF-M16-9), the cursive `<h1>choose a chest</h1>`, the three chest controls, the ghost/cake reveal SVG scaffolding, and the gateway/reveal JS. It does NOT include the `.atmosphere`/`.layer` map machinery.
+
+**Minimal `app/main.py` diff shape (signatures + TemplateResponse calls — NOT full code):**
+```python
+# REPLACE the current index() body:
+@app.get("/")
+def gateway(request: Request):
+    # Theme-neutral: NO read_theme(); the gateway ignores any existing cookie (D16).
+    return templates.TemplateResponse(request, "gateway.html", {})
+
+# ADD two subpage handlers that render the EXISTING index.html with a forced theme (D15):
+@app.get("/map/horror")
+def map_horror(request: Request):
+    return templates.TemplateResponse(
+        request, "index.html", {"theme": "horror", "levels": _levels_payload()})
+
+@app.get("/map/sea")
+def map_sea(request: Request):
+    return templates.TemplateResponse(
+        request, "index.html", {"theme": "sea", "levels": _levels_payload()})
+# level_page(), list_levels(), level_photos(), refresh() — ALL UNCHANGED.
+```
+Net `app/main.py` change: the old `index()` is replaced by `gateway()` + two thin map handlers. `read_theme`, `_levels_payload`, `_local_audio_ids`, the lifespan, and every `/api/*` and `/level/*` handler are untouched (R-M16-2 mitigation).
+
+## 17.3 Cookie-before-navigate flow (critical — M16R9 / NF-M16-4)
+
+**Decision D19 — reuse `theme.js`'s cookie+session write contract; add a `set`-without-reload entry point; navigate after the reveal.** The chest click MUST set `theme=horror|sea; path=/; max-age=1yr; SameSite=Lax` AND mirror sessionStorage **synchronously before** `location.assign`, so the destination subpage SSR-paints the chosen theme on first byte (no flash, R-M16-3). Today `theme.js`'s public API is `Archive19Theme.set(theme)` which writes both then **reloads** (§1) — the reveal flow must NOT reload `/`, it must navigate to a subpage. Two clean options (recommend **B**):
+
+- **(A)** Call the existing low-level writes directly — but `writeCookie`/`writeSession` are private to the `theme.js` IIFE, not exposed.
+- **(B, recommended)** Extend `theme.js`'s public surface with a navigation-free writer, e.g. `Archive19Theme.choose(theme)` that does `writeCookie(theme); writeSession(theme);` and returns (NO reload). The gateway JS calls `Archive19Theme.choose(theme)` then runs the reveal then `location.assign("/map/horror"|"/map/sea")`. This keeps ALL cookie/session logic in ONE place (`theme.js`) — no duplicated cookie string, so `read_theme` + the toggle keep working byte-compatibly (NF-M16-4). This is a small additive export to `theme.js`, not a behavior change to the existing `set`/`reconcile`/toggle paths.
+
+**Where the gateway JS lives — Decision D20: a NEW `static/gateway.js`, loaded only by `gateway.html`.** It is gateway-specific (chest wiring, reveal animation orchestration, the choose-then-navigate sequence) and should not bloat the always-loaded `theme.js`. It depends on `theme.js` being loaded first (for `Archive19Theme.choose`). `gateway.html` loads `theme.js` then `gateway.js`; the maps/level pages do NOT load `gateway.js`.
+
+**Precise client sequence for a chest activation:**
+```
+user activates chest (click / Enter / Space)
+  └─► gateway.js: resolve target theme
+        • chest1 (moon)  → theme = "horror", reveal = ghost
+        • chest3 (sun)   → theme = "sea",    reveal = cake
+        • chest2 (half)  → coin = Math.random() < 0.5 ? "horror" : "sea"  (D21, Q-M16-1)
+                            reveal = (theme === "horror" ? ghost : cake)
+  └─► Archive19Theme.choose(theme)          // writeCookie + writeSession, NO reload (D19/B)
+  └─► IF prefers-reduced-motion → skip reveal, location.assign(dest) immediately (D22)
+      ELSE play reveal (ghost/cake scale+fade to fullscreen)
+           └─► on `animationend` (or a fallback setTimeout) → location.assign(dest)
+  // dest = theme === "horror" ? "/map/horror" : "/map/sea"
+```
+Because the cookie is written before `location.assign`, the subpage GET carries the cookie AND the route forces the same theme (D15) — belt-and-suspenders, zero flash. Subsequent `/level/{id}` pages then SSR the chosen theme via `read_theme` as today.
+
+**Subpage arrival reconcile (M16R13 / Q-M16-8).** On `/map/horror` or `/map/sea`, `theme.js`'s existing `reconcile()` runs on load. Today it makes "the cookie the source of truth" — but a deep-link visitor may have a STALE cookie (cookie=sea, opened `/map/horror`). Since the subpage SSR-forced `horror` (D15), `reconcile()` already self-corrects: it reads `ssrTheme()` from the rendered `<html>` class and, when the cookie disagrees, the existing defensive `applyClass`/`writeCookie` path can be pointed at the rendered theme. **Decision D23 — adjust `reconcile()` so a forced-subpage render wins over a stale cookie** (write the cookie to match `ssrTheme()` on these pages), so the deep-link sets the cookie to its own theme (M16R13). Smallest form: the subpage emits a one-line inline `Archive19Theme.choose(ssrTheme())`-style sync, OR `reconcile()` is taught to trust the SSR class on the map subpages. QA verifies no flash and that the toggle still flips in place (Q-M16-9: the toggle STAYS on subpages — lean keep, F2).
+
+## 17.4 Chest-2 resolution (Q-M16-1)
+
+**Decision D21 — client-side RANDOM 50/50 per open, deterministic-per-click (recommended).** The coin-flip happens in `gateway.js` at activation time: `var theme = Math.random() < 0.5 ? "horror" : "sea";` computed ONCE per click and stored in a local var, so the *same* outcome drives BOTH the reveal art (ghost vs cake) AND the destination (`/map/horror` vs `/map/sea`) — they can never disagree within a click. The half-sun/half-moon symbol reads as "either realm." No server involvement (no new route, no payload), no persistence (each open re-rolls — matches the M16R8 "surprise realm" intent).
+
+- **Mapping:** `horror → reveal ghost → location.assign("/map/horror")`; `sea → reveal cake → location.assign("/map/sea")`. Identical to chest1/chest3's tail, only the theme is randomized.
+- **Flagged cheap variant (user-driven split halves).** If the user prefers Q-M16-1's "reveal BOTH halves, user clicks the ghost-half or cake-half," the design supports it cheaply: chest2's `aria-label` becomes a group, and on open it renders two inner controls (ghost-half / cake-half) each calling the same `choose(theme)→reveal→navigate` path with a FIXED theme. This is a second tap and a small markup addition, no new routes/JS architecture — so it's a sign-off toggle, not a redesign. **Default stays RANDOM (D21).**
+
+## 17.5 Reveal animation architecture
+
+**Decision D24 — pure CSS + inline SVG, scale+fade to fullscreen (recommended, M14/M9-consistent; Q-M16-2/Q-M16-3).** The ghost (drifting/glowing inline SVG) and cake (candle-lit inline SVG) live in `gateway.html` as `aria-hidden` SVG scaffolding, hidden by default. On a chest activation the chosen reveal element is shown and animated with a GPU-cheap `transform: scale()` + `opacity` keyframe that grows it from the chest to fill the viewport while fading the gateway behind it (NF-M16-3). The element is `position:fixed; inset:0; pointer-events:none` during the zoom so it covers the actual viewport on any device (NF-M16-1).
+
+- **Animation → navigation handoff.** Bind `animationend` on the reveal element → `location.assign(dest)`. Add a **fallback `setTimeout(navigate, <duration + buffer>)`** guarded by an `hasNavigated` flag so a missed/￼unsupported `animationend` still navigates exactly once (defensive, mirrors the app's "fail-safe" JS ethos). 
+- **Reduced-motion path (NF-M16-2, R-M16-4) — Decision D22.** Under `@media (prefers-reduced-motion: reduce)` (and/or a JS `matchMedia` check), SKIP the reveal entirely: `Archive19Theme.choose(theme)` then `location.assign(dest)` immediately — no zoom, no flashing. The CSS reveal keyframes are also frozen in the existing global reduce block (so even if shown, they don't animate). No flicker exceeds the app's "well under 3 flashes/sec" bar.
+- **Flagged alternative (raster/GIF/Lottie) — NOT chosen.** A Lottie player is a NEW client JS dependency + bytes; a GIF/APNG ghost/cake is a raster the byte-budget + `decoding="async"` rules would have to police (NF-M16-3) and can't be `prefers-reduced-motion`-frozen as cleanly. Pure CSS+SVG adds negligible bytes, no dependency, no new secret, and freezes for reduced-motion for free — so it's the default. (If the user opts into illustrated reveal art under Q-M16-3, it rides a budgeted asset task, analogous to M9 H5 / M14 L5.)
+
+## 17.6 Data-flow diagram (gateway → cookie write → subpage SSR → level pages)
+
+```
+Browser GET /  ───────────────► FastAPI gateway()  (NO read_theme — theme-neutral, D16)
+   ▼                                   │
+gateway.html (.gateway, no .theme-*)   ▼  TemplateResponse("gateway.html", {})
+   │   loads theme.js + gateway.js
+   │
+   ├─ user activates a chest ──► gateway.js:
+   │      chest1→horror/ghost · chest3→sea/cake · chest2→random(D21)→ghost|cake
+   │      Archive19Theme.choose(theme)   ── writeCookie(theme=…;path=/;SameSite=Lax)
+   │                                         + writeSession(theme)     [D19, theme.js]
+   │      reveal scale+fade  ──(animationend | fallback timer)──►  location.assign(dest)
+   │      (prefers-reduced-motion → skip reveal, assign immediately — D22)
+   ▼
+Browser GET /map/horror | /map/sea  (cookie now already set)
+   ▼
+FastAPI map_horror()/map_sea()  ── FORCES theme (D15), NOT read_theme ──►
+   index.html  (theme="horror"|"sea", levels=_levels_payload())   ← byte-identical to today's `/` map
+   │   reconcile() trusts the SSR-forced class; cookie aligned (D23)        → NO FLASH (R-M16-3)
+   │   in-page toggle + calibrate + idle photo-prefetch intact (Q-M16-9, NF-M16-5)
+   ▼
+Browser GET /level/{id}  ──► level_page() ── read_theme(cookie) ──► level.html  (UNCHANGED §14/§16-M15/§11/§13)
+   │  fetch /api/levels/{id}/photos (keyless Cloudinary CDN urls + optional caption — §4.1, UNCHANGED)
+   ▼  audio crossfade engine (§6, UNCHANGED)
+```
+
+## 17.7 Test-migration map (NF-M16-8 — the de-risking deliverable, R-M16-1)
+
+Moving the maps off `/` breaks every assertion that hits `/` expecting a themed MAP. Concretely (verified against the suite):
+
+**Re-point these `client.get("/")` map assertions to the new subpage routes** (`/map/horror` for the horror/no-cookie cases, `/map/sea` for the sea-cookie cases):
+
+| File | Tests (verbatim) | Today asserts at `/` | Re-point to |
+|---|---|---|---|
+| `tests/test_frontend.py` | `test_index_no_cookie_renders_theme_horror_class`, `test_index_sea_cookie_renders_theme_sea_class`, `test_index_invalid_cookie_falls_back_to_horror_class` | `/` paints `.theme-horror`/`.theme-sea` from cookie | `/map/horror`→horror, `/map/sea`→sea (theme now FORCED by route, D15 — the "invalid cookie → horror" test becomes "`/map/horror` always horror"). |
+| `tests/test_frontend.py` | `test_grid_renders_exactly_one_tile_per_reported_level`, `test_grid_distinguishes_available_from_unavailable`, `test_grid_available_tiles_match_api_available_set` | map/hotspots at `/` (`html = client.get("/").text`) | `/map/horror` (these are horror-map hotspot assertions). |
+| `tests/test_frontend.py` | `test_theme_toggle_present_on_index`, `test_theme_toggle_label_swaps_with_theme` | toggle present + label at `/` | the toggle now lives on the SUBPAGES (Q-M16-9 keep) → re-point to `/map/horror`+`/map/sea`; ADD a gateway test that `/` does NOT carry the map toggle (it carries chests). |
+| `tests/test_frontend.py` | `test_index_links_all_static_assets` | `/` links style.css/theme.js/etc | SPLIT: `/map/horror`+`/map/sea` keep the map's asset set; the gateway gets its OWN asset assertion (style.css?v=9, theme.js, gateway.js). |
+| `tests/test_frontend.py` | `test_no_secret_or_drive_leak_in_rendered_html` (parametrized incl. `/`), `test_no_secret_leak_with_sea_theme` | no secret leak at `/`, `/level/*` | KEEP `/` in the parametrize (still must not leak) + ADD `/map/horror`,`/map/sea`. |
+| `tests/test_horror_atmosphere.py` | `test_horror_renders_decorative_scene` & `test_sea_omits_decorative_scene` (param `["/", "/level/1", ...]`), `test_atmosphere_block_is_aria_hidden`, `test_decorative_layer_has_no_interactive_elements`, `test_sea_atmosphere_div_present_but_empty`, `test_grid_tile_markup_contract_unchanged`, `test_horror_scene_sits_outside_the_layer`, `test_toggle_and_slideshow_js_intact` | the `.atmosphere`/`.horror-scene`/map at `/` | swap the `/` entry in each `path` param to `/map/horror` (and `/map/sea` for the sea-omit case); the `/level/*` entries stay. The `.atmosphere`/scene now lives on the subpages, NOT the gateway. |
+| `tests/test_sea_landing.py` | `test_sea_cookie_renders_full_bleed_map`, `test_sea_landing_drops_old_island_grid`, `test_sea_landing_has_19_hotspots`, `test_available_hotspot_label_and_class`, `test_sealed_hotspot_label_and_class`, `test_sealed_vs_available_counts_match_discovery`, `test_sea_names_come_from_template_dict`, `test_horror_arm_unchanged_and_no_sea_bleed`, `test_horror_landing_still_has_19_hotspots`, `test_calibrate_js_targets_both_maps` | the Sea/Horror map at `/` (cookie-driven) | `/map/sea` (sea-map cases) and `/map/horror` (horror-map cases). These no longer set a cookie to pick the arm — the ROUTE picks it (D15). |
+| `tests/test_backend.py` | `test_theme_default_horror_no_cookie`, `test_theme_sea_cookie_passed_to_context` | the default-horror / sea-cookie theme context at `/` | `/map/horror` (default-horror context) and `/map/sea` (sea context) — the theme is now FORCED by route (D15), not derived from the cookie at `/`. (As-built: both re-pointed to assert a 200 from the forced-theme map route.) |
+
+**Leave UNCHANGED** (no `/`-map dependency): all `/level/{id}` assertions (`test_level_page_*`, `test_m14_level_atmosphere.py` 21 tests, `test_captions.py`, `test_horror_atmosphere.py`'s CSS-token tests at lines 158–295 which read `static/style.css` not a route), `test_cloudinary.py`, `test_backend.py` (`/api/*`), `test_sea_landing.py::test_level_routes_200_under_both_themes` + `test_api_levels_unchanged_by_m10`.
+
+**NEW gateway coverage — SHIPPED in `tests/test_gateway.py` (30 tests, as-built 2026-06-13):** the file was added and covers the cases below; the version-pin test was also bumped v8→v9. Full suite ends green (220 passed).
+- `GET /` → 200 and renders `gateway.html` (contains the `.gateway` namespace, the cursive `<h1>choose a chest</h1>`).
+- **Neutral SSR / no theme-class leak:** `/`'s `<html>` and `<body>` carry **NO** `theme-horror`/`theme-sea` class even when a `theme=horror`/`theme=sea` cookie is set (Q-M16-12 / D16 — parametrize both cookies + none).
+- **Three chests + symbols:** exactly 3 chest controls; chest1 carries the moon symbol/marker, chest2 the half-sun/half-moon (largest), chest3 the sun; no visible text label on the chests (M16R5).
+- **A11y:** each chest is a focusable control (`<button>`/`<a>`) with a non-empty `aria-label` (M16R10); the decorative reveal SVG layers are `aria-hidden` + `focusable="false"` + no `tabindex` (NF-M16-2).
+- **Cookie-before-navigate wiring:** the gateway loads `theme.js` + `gateway.js`; `gateway.js` calls `Archive19Theme.choose(...)` and `location.assign("/map/horror"|"/map/sea")` (assert the wiring strings are present — the established pattern of asserting JS literals, mirroring `test_frontend`'s `fetch("/api/levels/...")` checks).
+- **Chest-2 rule:** assert the random-resolution literal (e.g. `Math.random()`) and that both `/map/horror` and `/map/sea` destinations are reachable from chest2's branch (Q-M16-1/D21).
+- **Reduced-motion fallback:** assert the reduce-gated skip path exists (CSS reduce rule for the reveal keyframes + the JS `matchMedia('(prefers-reduced-motion: reduce)')` branch).
+- **Subpage deep-link standalone:** `GET /map/horror` (no cookie) → `.theme-horror` + horror map; `GET /map/sea` (no cookie) → `.theme-sea` + sea map (D15 forced-theme proof).
+- **No `/` redirect:** `GET /` returns 200 (not 3xx) even with a stored cookie (D17 / Q-M16-7).
+
+## 17.8 Decisions & risks/ambiguities flagged to the PM
+
+**Decisions recorded (architect):** D14 (`/`=neutral gateway, maps→`/map/horror`+`/map/sea` — user pick at G2 over the recommended bare `/horror`+`/sea`), D15 (subpages FORCE theme), D16 (gateway ignores the cookie for its own render), D17 (no redirects), D18 (NEW `gateway.html` + reuse `index.html` at both subpages), D19 (extend `theme.js` with a no-reload `choose()`), D20 (NEW `static/gateway.js`), D21 (chest-2 = client RANDOM 50/50), D22 (reduced-motion skips the reveal), D23 (subpage reconcile trusts the SSR-forced theme over a stale cookie), D24 (pure CSS+SVG reveal, scale+fade, `animationend`+fallback-timer handoff).
+
+**BLOCKING — need the user (carry to the Discovery Report):**
+- **Q-M16-1 (chest-2 rule).** Architect default **D21 = RANDOM 50/50 per open** → matching theme. Cheap user-driven-split-halves variant supported if preferred (§17.4). Confirm.
+- **Q-M16-4 (route names + is `/` always the gateway).** Architect recommended **`/horror` + `/sea`**, `/` ALWAYS the gateway, no redirect (D14/D17). The backend route shape + the entire test re-point (§17.7) depend on this. **RESOLVED at G2 (2026-06-13): the user picked the `/map/{theme}` namespace → `/map/horror` + `/map/sea`** (overriding the bare recommendation); `/` always the gateway, no redirect confirmed. All of §17 above is updated to `/map/{theme}`.
+- **Q-M16-7 (show every visit vs skip).** Architect lean **show every visit** (D17 no redirect; the cookie pre-selects theme for the maps/levels but does NOT auto-skip the gateway). If the user wants "returning visitor skips straight to their map," that becomes a client-side `location.replace` on gateway load (NOT a server redirect) — small addition, but it changes the gateway test (`/` would 200 + immediately redirect client-side).
+
+**Shaping (ride the defaults unless the user weighs in):** Q-M16-2 (stylized SVG reveal — D24), Q-M16-3 (pure CSS+SVG — D24), Q-M16-5 (cursive font — recommend a single neutral cursive; reuse `Tangerine` or add ONE neutral face via the M15 Google-Fonts pattern, non-blocking, system-cursive fallback), Q-M16-6 (silent gateway + optional gesture-gated open sting; destination ambient starts on the map as today), Q-M16-8 (subpage sets cookie on arrival, no `/` redirect — D23/D17), Q-M16-9 (KEEP the toggle on subpages — F2), Q-M16-10 (home logo → `/` gateway), Q-M16-11 (uniform chests, differentiated by symbol only), Q-M16-12 (gateway ignores the cookie for its own render — D16).
+
+**NEW risks surfaced by the architect (beyond REQUIREMENTS R-M16-1…6):**
+- **R-M16-7 (theme.js `reconcile()` regression).** Teaching `reconcile()` to trust the SSR-forced subpage theme over a stale cookie (D23) touches a function the toggle + every page depends on. Mitigation: prefer the additive `Archive19Theme.choose()` export (D19) + a one-line inline subpage sync over editing `reconcile()`'s core logic; QA asserts the toggle still flips in place on `/map/horror`/`/map/sea` and that `/level/{id}` still honors the cookie. SECURITY scope-audits the `theme.js` diff.
+- **R-M16-8 (`brand-logo href="/"` now lands on the gateway, not a map).** `index.html`'s logo links `href="/"` (line ~70); after D14 that goes to the gateway (which is exactly Q-M16-10's lean — logo → gateway). This is intended, but it's a behavior change on the maps/level pages the PM should confirm (the logo was "home = your map" before; now "home = the chests"). No code risk; a UX confirm.
+- **R-M16-9 (`animationend` never fires).** If the reveal element's animation is interrupted/unsupported, navigation could stall. Mitigation: the `hasNavigated`-guarded fallback `setTimeout` (D24) guarantees exactly-once navigation.
+- **R-M16-10 (gateway has no `.theme-*` class → CSS that assumes one).** Any shared rule keyed on `.theme-horror`/`.theme-sea` won't apply on the gateway (intended — D16/NF-M16-6), but the gateway's own neutral `.gateway` styling must be self-contained and must NOT edit `:root` neutrals that the maps/levels inherit. SECURITY/QA verify no `.theme-*` bleed and no `:root` regression.

@@ -227,15 +227,19 @@ def _spy_theme(monkeypatch):
 
 
 def test_theme_default_horror_no_cookie(client, monkeypatch):
+    # M16 (NF-M16-8): `/` is now the theme-NEUTRAL gateway (no `theme` in its
+    # context). The horror map relocated to /map/horror with the theme FORCED by
+    # route (D15) — so the "default horror" context now comes from /map/horror.
     captured = _spy_theme(monkeypatch)
-    assert client.get("/").status_code == 200
+    assert client.get("/map/horror").status_code == 200
     assert captured["theme"] == "horror"
 
 
 def test_theme_sea_cookie_passed_to_context(client, monkeypatch):
+    # M16: the Sea context now comes from the forced /map/sea route (D15), not a
+    # cookie at `/` (the gateway ignores the cookie for its own render — D16).
     captured = _spy_theme(monkeypatch)
-    client.cookies.set("theme", "sea")
-    assert client.get("/").status_code == 200
+    assert client.get("/map/sea").status_code == 200
     assert captured["theme"] == "sea"
 
 

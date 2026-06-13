@@ -29,28 +29,42 @@ BASE_DIR = Path(main_module.__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 
 # Substrings that must NEVER appear in client-facing HTML (key/Drive isolation).
-LEAK_NEEDLES = ["googleapis", "drive.google", "AIza", "key="]
+# NB (M16): the `googleapis` needle was narrowed to the Drive/credential hosts
+# (`www.googleapis.com`/`drive.googleapis.com`) — the bare `googleapis` token also
+# matches the benign `fonts.googleapis.com` Google-Fonts CDN, which gateway.html
+# (and the M15 level-18 page) legitimately load. The Drive API + key isolation
+# intent is fully preserved by the host-specific + key needles below.
+LEAK_NEEDLES = [
+    "www.googleapis.com",
+    "drive.googleapis.com",
+    "drive.google",
+    "AIza",
+    "key=",
+]
 
 
 # ===========================================================================
 # 1. SSR theme class per cookie (D1/D3) — asserted against rendered HTML
 # ===========================================================================
 def test_index_no_cookie_renders_theme_horror_class(client):
-    resp = client.get("/")
+    # M16 (NF-M16-8): the cookie-driven map left `/` (now the neutral gateway);
+    # the Horror map relocated to /map/horror with the theme FORCED by route (D15),
+    # so no cookie is needed to select the arm.
+    resp = client.get("/map/horror")
     assert resp.status_code == 200
     html = resp.text
-    # <html class="theme-horror"> AND <body class="theme-horror ...">
-    assert '<html lang="en" class="theme-horror">' in html, html[:300]
+    # <html class="theme-horror" ...> AND <body class="theme-horror ...">
+    assert '<html lang="en" class="theme-horror"' in html, html[:300]
     assert 'class="theme-horror min-h-screen"' in html
     assert "theme-sea" not in html
 
 
 def test_index_sea_cookie_renders_theme_sea_class(client):
-    client.cookies.set("theme", "sea")
-    resp = client.get("/")
+    # M16: Sea map relocated to /map/sea, theme FORCED by route (D15).
+    resp = client.get("/map/sea")
     assert resp.status_code == 200
     html = resp.text
-    assert '<html lang="en" class="theme-sea">' in html, html[:300]
+    assert '<html lang="en" class="theme-sea"' in html, html[:300]
     assert 'class="theme-sea min-h-screen"' in html
     # Sea copy is rendered, not the horror copy.
     assert "archipelago" in html.lower()
@@ -58,11 +72,13 @@ def test_index_sea_cookie_renders_theme_sea_class(client):
 
 
 def test_index_invalid_cookie_falls_back_to_horror_class(client):
+    # M16: the route forces the theme now, so the old "invalid cookie -> horror"
+    # case becomes "/map/horror is ALWAYS horror, even with a contradicting cookie."
     client.cookies.set("theme", "purple-nonsense")
-    resp = client.get("/")
+    resp = client.get("/map/horror")
     assert resp.status_code == 200
     html = resp.text
-    assert '<html lang="en" class="theme-horror">' in html
+    assert '<html lang="en" class="theme-horror"' in html
     assert "theme-sea" not in html
 
 
@@ -91,7 +107,7 @@ def test_grid_renders_exactly_one_tile_per_reported_level(client):
     # Superseded by the map redesign (M9/M10): the landing now exposes exactly
     # one hotspot per level id 0..18 (all 19), regardless of discovery span.
     # Invariant preserved: one navigation entry per level, no dupes, no extras.
-    html = client.get("/").text  # no cookie -> horror map
+    html = client.get("/map/horror").text  # forced horror map (M16)
     hrefs = _hotspot_hrefs(html)
     rendered_ids = sorted(int(h.rsplit("/", 1)[-1]) for h in hrefs)
 
@@ -104,7 +120,7 @@ def test_grid_distinguishes_available_from_unavailable(client):
     # the `is-sealed` hotspot modifier + a "(sealed — fallback content)" label
     # suffix instead of the old `is-unavailable` tile + "Lost" badge.
     api = {lvl["id"]: lvl["available"] for lvl in client.get("/api/levels").json()["levels"]}
-    html = client.get("/").text  # horror map
+    html = client.get("/map/horror").text  # forced horror map (M16)
 
     for level_id in range(0, 19):
         available = api.get(level_id, False)
@@ -133,7 +149,7 @@ def test_grid_available_tiles_match_api_available_set(client):
     # Mocked tree -> folders 1, 2, 8 present.
     assert available_ids == [1, 2, 8]
 
-    html = client.get("/").text  # horror map
+    html = client.get("/map/horror").text  # forced horror map (M16)
     available_hotspots = re.findall(
         r'<a\s+class="map-hotspot"\s+href="/level/(\d+)"', html
     )
@@ -181,9 +197,13 @@ def test_level_page_theme_class_present(client):
 # 4. Theme toggle present on every page (F2)
 # ===========================================================================
 def test_theme_toggle_present_on_index(client):
-    html = client.get("/").text
-    assert 'id="theme-toggle"' in html
-    assert 'aria-label="Toggle between Horror and Sea themes"' in html
+    # M16 (Q-M16-9 keep): the in-page toggle now lives on the SUBPAGES, not the
+    # neutral gateway. (The gateway carries chests instead — asserted in
+    # tests/test_gateway.py::test_gateway_has_no_map_toggle.)
+    for path in ("/map/horror", "/map/sea"):
+        html = client.get(path).text
+        assert 'id="theme-toggle"' in html, path
+        assert 'aria-label="Toggle between Horror and Sea themes"' in html, path
 
 
 def test_theme_toggle_present_on_level_pages(client):
@@ -194,17 +214,20 @@ def test_theme_toggle_present_on_level_pages(client):
 
 
 def test_theme_toggle_label_swaps_with_theme(client):
-    horror = client.get("/").text
+    # M16: the toggle label is driven by the FORCED theme of the map subpage now.
+    horror = client.get("/map/horror").text
     assert "Sail to the Sea" in horror
-    client.cookies.set("theme", "sea")
-    sea = client.get("/").text
+    sea = client.get("/map/sea").text
     assert "Enter the Corridor" in sea
 
 
 # ===========================================================================
 # 5. No Drive/secret leakage in rendered HTML (defense-in-depth)
 # ===========================================================================
-@pytest.mark.parametrize("path", ["/", "/level/1", "/level/3", "/level/8"])
+@pytest.mark.parametrize(
+    "path",
+    ["/", "/map/horror", "/map/sea", "/level/1", "/level/3", "/level/8"],
+)
 def test_no_secret_or_drive_leak_in_rendered_html(client, path):
     html = client.get(path).text
     for needle in LEAK_NEEDLES:
@@ -215,8 +238,10 @@ def test_no_secret_or_drive_leak_in_rendered_html(client, path):
 
 
 def test_no_secret_leak_with_sea_theme(client):
+    # M16: the cookie-driven Sea landing moved to /map/sea; keep covering it +
+    # a sea-cookie level page.
     client.cookies.set("theme", "sea")
-    for path in ("/", "/level/3"):
+    for path in ("/map/sea", "/level/3"):
         html = client.get(path).text
         for needle in LEAK_NEEDLES:
             assert needle not in html, f"leaked '{needle}' in {path} (sea)"
@@ -251,8 +276,12 @@ def _links_style_css(html: str) -> bool:
     )
 
 
-def test_index_links_all_static_assets(client):
-    html = client.get("/").text
+@pytest.mark.parametrize("path", ["/map/horror", "/map/sea"])
+def test_index_links_all_static_assets(client, path):
+    # M16: the index map relocated to /map/horror + /map/sea; it keeps the same
+    # asset set. The gateway's own asset set (style.css?v=9, theme.js, gateway.js)
+    # is asserted in tests/test_gateway.py.
+    html = client.get(path).text
     assert _links_style_css(html), "style.css link missing/unexpected form"
     assert '<script src="/static/theme.js"></script>' in html
     assert '<script src="/static/audio-engine.js"></script>' in html

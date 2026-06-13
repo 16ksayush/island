@@ -1,0 +1,302 @@
+/* =========================================================================
+   M16 mockup stylesheet — neutral chest-chooser GATEWAY (theme-agnostic).
+   Look/feel artifact for sign-off. The real build moves these into a scoped
+   .gateway block in static/style.css (NO :root / NO .theme-* edits) and bumps
+   style.css?v=.
+
+   ART REVISION 2026-06-13 — PAINTED backdrop. The hand-drawn SVG scene
+   (dragon / torches / arched doorway / treasure hoard) is REMOVED. The gateway
+   now uses a full-bleed PAINTED RASTER as its background (cover), mirroring the
+   landing-map `background: cover` pattern. The chests, the dragon's speech-
+   bubble heading and the brand logo are the SCALING FRONT LAYER on top of the
+   painting; a decorative scrim keeps them legible across crops. Mockup path is
+   RELATIVE (../../static/img/gateway/gateway-bg.jpg); production uses the
+   absolute /static/img/gateway/gateway-bg.jpg. Reveal SVGs stay inline.
+   (REQUIREMENTS §17 / ARCHITECTURE §17, D14-D24.)
+   ========================================================================= */
+
+/* ---- scoped tokens: declared on .gateway, NOT :root (NF-M16-6) ---------- */
+.gateway {
+  --gw-ink:     #fdf3df;
+  --gw-focus:   #ffd970;
+  --gw-reveal:  1100ms;
+  --gw-ease:    cubic-bezier(0.6, 0.02, 0.2, 1);
+  --gw-t:       1.5s;
+  /* --- DARK glowing speech-bubble set (sign-off pass 2026-06-13) ----------
+     Amber #ffce5a on the ~#140e1f smoky fill ≈ 9.6:1 (AAA even at body text;
+     comfortably AA for large display). */
+  --gw-bubble:     #140e1f;  /* smoky dark balloon fill (near-obsidian violet) */
+  --gw-bubble-2:   #241634;  /* lifted smoky edge for the bubble gradient      */
+  --gw-bubble-ink: #ffce5a;  /* GLOWING amber cursive text (AAA on the fill)   */
+  --gw-bubble-glow:#ffb000;  /* amber rim/halo glow around the dark bubble     */
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+
+/* The neutral page itself — NO .theme-* class anywhere (D16).
+   PAINTED dragon-vault backdrop: full-bleed `cover`, kept centred (center-top
+   so the dragon's head is never cropped on tall screens). Mirrors the landing-
+   map cover pattern. A dark fallback colour shows if the image is missing. */
+.gateway {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+  color: var(--gw-ink);
+  font-family: "Cinzel Decorative", "Luminari", "Papyrus", cursive, serif;
+  background:
+    url(../../static/img/gateway/gateway-bg.jpg) center top / cover no-repeat,
+    #0c0814;
+  background-attachment: fixed, fixed;
+}
+
+/* ---- z-0 decorative SCRIM (inert) --------------------------------------
+   A soft TOP scrim behind the speech bubble + a stronger BOTTOM scrim behind
+   the chests give a consistent dark "floor" no matter how the painting crops
+   across aspect ratios. Tuned NOT to wash the painting out (the mid band is
+   fully transparent so the dragon/arch read at full strength). */
+.gw-scrim {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg,
+      rgba(8,6,16,0.55) 0%,
+      rgba(8,6,16,0.18) 16%,
+      rgba(8,6,16,0)    34%,
+      rgba(8,6,16,0)    52%,
+      rgba(8,6,16,0.40) 74%,
+      rgba(6,4,12,0.78) 100%);
+}
+
+/* ---- z-5 app brand mark (top-left, present on every page) ---------------
+   Reuses the production .brand-logo / .app-logo spec (static/style.css) so the
+   gateway is visually 1:1 with the maps/level pages — same white rounded badge,
+   same 44px art. The ONLY gateway-specific change is the focus ring color: the
+   gateway has no .theme-* `--accent`, so it uses the scoped --gw-focus gold. */
+.brand-logo {
+  position: absolute;
+  top: 0.85rem;
+  left: 1rem;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.brand-logo:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.brand-logo:focus-visible {
+  outline: 2px solid var(--gw-focus);
+  outline-offset: 2px;
+}
+.app-logo {
+  height: 44px;
+  width: auto;
+  display: block;
+  user-select: none;
+}
+
+/* ---- z-1 content stage --------------------------------------------------
+   A column: the speech bubble pins to the UPPER band (near the painted dragon's
+   head/mouth), a flexible spacer pushes the chest row down onto the painted
+   GOLD HOARD in the lower-centre. The chests + bubble + logo scale with
+   clamp()/flex independently of the painted pixels (they are NOT pinned to
+   painted coordinates), so the painting can crop freely behind them. */
+.gw-stage {
+  position: relative; z-index: 1;
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center;
+  padding: clamp(1rem, 4vw, 3rem);
+  padding-bottom: clamp(2.5rem, 7vh, 5rem);
+}
+/* moderate gap between the (now lowered) heading and the chest row */
+.gw-stage-fill { flex: 0 0 auto; min-height: clamp(1.5rem, 8vh, 4.5rem); }
+
+/* ---- the heading is the painted dragon's DARK GLOWING SPEECH BUBBLE ------
+   The <h1> keeps its semantics/id/class for a11y + JS/tests; it is restyled
+   into a smoky DARK rounded balloon with GLOWING AMBER cursive text + an amber
+   halo, with a pointer ::after tail aimed UP toward the painted dragon's mouth.
+   Sits in the UPPER band so the painted dragon "speaks" it.
+   Amber #ffce5a on the ~#140e1f fill ≈ 9.6:1 → AAA. */
+.gw-heading {
+  position: relative;
+  z-index: 2;
+  align-self: center;
+  /* margin-top:auto banks the free space ABOVE the heading, pushing it down
+     into the lower-middle so the painted dragon's FACE/head stays fully
+     visible up top. */
+  margin: auto auto 0;
+  max-width: min(86vw, 460px);
+  padding: 0.15rem 0.5rem;
+  font-weight: 900;
+  font-size: clamp(1.4rem, 4.4vw, 2.6rem);   /* smaller than the old balloon */
+  line-height: 1.04;
+  letter-spacing: 0.03em;
+  text-align: center;
+  /* TRANSPARENT — no balloon fill/border/box; just glowing amber cursive text
+     sitting directly over the painting. A dark halo keeps it legible over the
+     busy dragon/hoard, plus the amber glow for the "lit by dragonfire" feel. */
+  color: var(--gw-bubble-ink);
+  background: none;
+  border: none;
+  box-shadow: none;
+  text-shadow:
+    0 2px 6px rgba(0,0,0,0.92),               /* dark legibility halo        */
+    0 0 4px rgba(0,0,0,0.85),
+    0 0 12px rgba(255,176,0,0.7),             /* amber glow                  */
+    0 0 26px rgba(255,140,0,0.45);
+}
+/* transparent text box → no speech-bubble tail */
+.gw-heading::before,
+.gw-heading::after { content: none; }
+
+/* ---- the three chests --------------------------------------------------- */
+.gw-chests {
+  display: flex; flex-wrap: wrap;
+  align-items: flex-end; justify-content: center;
+  gap: clamp(1rem, 3vw, 3rem);
+  width: 100%;
+}
+
+.gw-chest {
+  appearance: none; border: 0; background: transparent;
+  padding: 0; margin: 0; cursor: pointer;
+  position: relative;
+  width: clamp(116px, 22vw, 220px);
+  border-radius: 14px;
+  transition: transform 220ms var(--gw-ease), filter 220ms ease;
+  /* strong cast shadow so the chests read as SITTING ON the painted gold */
+  filter: drop-shadow(0 18px 22px rgba(0,0,0,0.6));
+}
+.gw-chest--2 { width: clamp(168px, 32vw, 320px); }  /* middle: largest (~1.5x) */
+
+.gw-chest:hover,
+.gw-chest:focus-visible { transform: translateY(-6px); filter: drop-shadow(0 26px 30px rgba(0,0,0,0.7)); }
+.gw-chest:focus-visible { outline: none; }
+.gw-chest:focus-visible .gw-chest-art .gw-chest-rim { stroke: var(--gw-focus); stroke-width: 3; }
+/* Focus ring strengthened for the busy painted backdrop: a dark contrast
+   collar UNDER the gold ring keeps the ring legible even where it crosses the
+   warm painted gold (so it never washes out against the treasure). */
+.gw-chest:focus-visible::after {
+  content: ""; position: absolute; inset: -8px; border-radius: 18px;
+  box-shadow:
+    0 0 0 2px rgba(10, 8, 20, 0.95),     /* dark collar for contrast on gold */
+    0 0 0 5px var(--gw-focus),           /* the gold ring (3px band)         */
+    0 0 14px 5px rgba(255, 217, 112, 0.45); /* soft outer glow to pop        */
+}
+.gw-chest:active { transform: translateY(-2px); }
+
+.gw-chest-art { display: block; width: 100%; height: auto; }
+
+/* symbol glow breathe (frozen under reduced-motion) */
+.gw-symbol { animation: gw-glow 5.5s ease-in-out infinite; transform-origin: center; }
+@keyframes gw-glow { 0%,100% { opacity: 0.82; } 50% { opacity: 1; } }
+
+/* lid opens on .is-opening (hinge at back-top of the lid) */
+.gw-lid { transform-origin: 50% 100%; transition: transform 280ms var(--gw-ease); }
+.gw-chest.is-opening .gw-lid { transform: perspective(360px) rotateX(-105deg); }
+.gw-chest.is-opening .gw-inner-glow { opacity: 1; }
+.gw-inner-glow { opacity: 0; transition: opacity 240ms ease; }
+
+/* ---- z-90 reveal overlay (covers the real viewport, painting included) -- */
+.gw-reveal {
+  position: fixed; inset: 0; z-index: 90;
+  pointer-events: none;
+  display: none;
+}
+.gw-reveal.is-active { display: block; }
+
+.gw-reveal-veil {
+  position: absolute; inset: 0; opacity: 0;
+}
+.gw-reveal.is-active.to-horror .gw-reveal-veil {
+  background: radial-gradient(circle at 50% 50%, rgba(20,16,40,0.4), #05070d 80%);
+  animation: gw-veil var(--gw-reveal) var(--gw-ease) forwards;
+}
+.gw-reveal.is-active.to-sea .gw-reveal-veil {
+  background: radial-gradient(circle at 50% 50%, rgba(255,236,200,0.5), #fde7c0 80%);
+  animation: gw-veil var(--gw-reveal) var(--gw-ease) forwards;
+}
+@keyframes gw-veil { from { opacity: 0; } 60% { opacity: 0.9; } to { opacity: 1; } }
+
+/* the emerging+zooming object */
+.gw-reveal-obj {
+  position: absolute; left: 50%; top: 58%;
+  width: clamp(90px, 16vw, 180px); height: auto;
+  transform: translate(-50%, -50%) scale(0.3);
+  opacity: 0;
+}
+.gw-reveal.is-active.to-horror .gw-reveal-ghost,
+.gw-reveal.is-active.to-sea    .gw-reveal-cake { display: block; }
+.gw-reveal-ghost, .gw-reveal-cake { display: none; }
+
+.gw-reveal.is-active .gw-reveal-ghost.is-playing,
+.gw-reveal.is-active .gw-reveal-cake.is-playing {
+  animation: gw-emerge 520ms var(--gw-ease) forwards,
+             gw-zoom var(--gw-reveal) var(--gw-ease) forwards;
+}
+@keyframes gw-emerge {
+  0%   { opacity: 0; transform: translate(-50%, -30%) scale(0.3); }
+  100% { opacity: 1; transform: translate(-50%, -55%) scale(0.45); }
+}
+@keyframes gw-zoom {
+  0%   { transform: translate(-50%, -55%) scale(0.45); }
+  38%  { transform: translate(-50%, -52%) scale(0.6); }
+  100% { transform: translate(-50%, -50%) scale(14); opacity: 1; }
+}
+
+/* candle flame flicker (cake) — frozen under reduce */
+.gw-flame { animation: gw-flicker 1.6s ease-in-out infinite; transform-origin: center bottom; }
+@keyframes gw-flicker { 0%,100% { transform: scaleY(1); opacity: 0.95; } 50% { transform: scaleY(1.15); opacity: 1; } }
+
+/* ---- responsive: stack on narrow, middle still largest (NF-M16-1) -------
+   The painting still covers/crops; only the FRONT layer reflows. The bubble
+   stays in the upper band but shrinks + wraps so it never clips; the chest row
+   becomes a centred column on the lower hoard band; the spacer shrinks so the
+   stacked column stays on-screen with no horizontal scroll. */
+@media (max-width: 719px) {
+  /* keep the painted dragon's head anchored at top so it isn't cropped */
+  .gateway { background-position: center top; }
+  .gw-chests { flex-direction: column; align-items: center; gap: clamp(0.9rem, 3.5vh, 1.8rem); }
+  .gw-stage-fill { min-height: clamp(1rem, 6vh, 4rem); }
+  .gw-stage { padding-bottom: clamp(1.5rem, 5vh, 3rem); }
+  .gw-heading {
+    margin: auto auto 0;          /* still banked down below the dragon's face */
+    width: min(82vw, 18rem);
+    max-width: min(82vw, 18rem);
+    font-size: clamp(1.2rem, 6vw, 1.9rem);
+    padding: 0.1rem 0.4rem;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+  /* a touch more bottom scrim on phones (the column of chests is taller) */
+  .gw-scrim {
+    background:
+      linear-gradient(180deg,
+        rgba(8,6,16,0.55) 0%,
+        rgba(8,6,16,0.18) 14%,
+        rgba(8,6,16,0)    30%,
+        rgba(8,6,16,0)    44%,
+        rgba(8,6,16,0.50) 66%,
+        rgba(6,4,12,0.85) 100%);
+  }
+}
+
+/* ---- reduced motion: freeze ALL gateway motion (NF-M16-2 / D22) --------- */
+@media (prefers-reduced-motion: reduce) {
+  .gw-symbol, .gw-flame,
+  .gw-lid, .gw-inner-glow,
+  .gw-reveal-veil,
+  .gw-reveal-ghost, .gw-reveal-cake,
+  .gw-heading {   /* freeze the dark-bubble glow pulse */
+    animation: none !important;
+    transition: none !important;
+  }
+}

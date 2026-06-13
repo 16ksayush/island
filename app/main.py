@@ -166,15 +166,43 @@ def _local_audio_ids(theme: str) -> list[int]:
 
 
 # --- SSR routes ------------------------------------------------------------
-@app.get("/")
-def index(request: Request):
-    """Landing page: dynamic grid sized to the discovered levels + theme."""
-    theme = read_theme(request)
+def _map_page(request: Request, theme: str):
+    """Render the map (``index.html``) with an explicitly FORCED theme (D15).
+
+    Both ``/map/horror`` and ``/map/sea`` serve the EXISTING map template with
+    the same context shape the old ``index()`` used (``theme`` + ``levels``);
+    only the theme literal differs, so the route name — not the cookie — is the
+    source of truth for which arm of ``index.html`` renders (D15/D18).
+    """
     return templates.TemplateResponse(
         request,
         "index.html",
         {"theme": theme, "levels": _levels_payload()},
     )
+
+
+@app.get("/")
+def gateway(request: Request):
+    """Theme-neutral chest-chooser gateway (M16, D14/D16).
+
+    Renders ``gateway.html`` with NO theme — it deliberately does NOT call
+    :func:`read_theme` and ignores any existing ``theme`` cookie for its own
+    render (D16). Always the gateway, never a map, and never a redirect (D17).
+    The gateway does not need the levels payload.
+    """
+    return templates.TemplateResponse(request, "gateway.html", {})
+
+
+@app.get("/map/horror")
+def map_horror(request: Request):
+    """Horror map — ``index.html`` with theme FORCED to ``horror`` (D15)."""
+    return _map_page(request, "horror")
+
+
+@app.get("/map/sea")
+def map_sea(request: Request):
+    """Sea map — ``index.html`` with theme FORCED to ``sea`` (D15)."""
+    return _map_page(request, "sea")
 
 
 @app.get("/level/{level_id}")

@@ -45,8 +45,9 @@ SEA_NAMES = {
 
 
 def _sea_html(client) -> str:
-    client.cookies.set("theme", "sea")
-    resp = client.get("/")
+    # M16 (NF-M16-8): the cookie-driven Sea landing relocated to /map/sea with the
+    # theme FORCED by route (D15) — no cookie needed to select the Sea arm.
+    resp = client.get("/map/sea")
     assert resp.status_code == 200, resp.status_code
     return resp.text
 
@@ -56,7 +57,7 @@ def _sea_html(client) -> str:
 # ===========================================================================
 def test_sea_cookie_renders_full_bleed_map(client):
     html = _sea_html(client)
-    assert '<html lang="en" class="theme-sea">' in html, html[:300]
+    assert '<html lang="en" class="theme-sea"' in html, html[:300]
     assert 'class="theme-sea min-h-screen"' in html
     # Full-bleed map container + image (replaces the island grid).
     assert 'class="layer sea-landing"' in html
@@ -170,15 +171,15 @@ def test_sea_names_come_from_template_dict(client):
 # ===========================================================================
 @pytest.mark.parametrize("cookie", [None, "horror", "purple-nonsense"])
 def test_horror_arm_unchanged_and_no_sea_bleed(client, cookie):
-    """Default/no-cookie + explicit horror + invalid cookie all -> horror map.
-    The Sea map machinery must NOT bleed into the Horror landing.
+    """The forced-theme Horror map (/map/horror) renders horror regardless of any
+    stored cookie (D15). The Sea map machinery must NOT bleed into it.
     """
     if cookie is not None:
         client.cookies.set("theme", cookie)
-    resp = client.get("/")
+    resp = client.get("/map/horror")  # M16: forced horror map
     assert resp.status_code == 200
     html = resp.text
-    assert '<html lang="en" class="theme-horror">' in html, html[:300]
+    assert '<html lang="en" class="theme-horror"' in html, html[:300]
     assert 'class="horror-map"' in html
     assert f'src="{HORROR_IMG}"' in html, "Horror map asset src missing/changed"
     # No Sea map ELEMENTS leak into the Horror arm. (The shared calibrate-JS
@@ -193,7 +194,7 @@ def test_horror_arm_unchanged_and_no_sea_bleed(client, cookie):
 
 def test_horror_landing_still_has_19_hotspots(client):
     """Horror map keeps its own 19 hotspots (M9 contract unbroken by M10)."""
-    html = client.get("/").text  # no cookie -> horror
+    html = client.get("/map/horror").text  # M16: forced horror map
     hrefs = re.findall(r'<a\s+class="map-hotspot[^"]*"\s+href="(/level/\d+)"', html)
     ids = sorted(int(h.rsplit("/", 1)[-1]) for h in hrefs)
     assert ids == ALL_IDS, ids

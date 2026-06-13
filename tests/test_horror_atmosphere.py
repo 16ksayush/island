@@ -38,22 +38,28 @@ HORROR_SCENE_MARKERS = [
 # ===========================================================================
 # 2. Theme isolation (critical) — Horror renders the scene; Sea does NOT.
 # ===========================================================================
-@pytest.mark.parametrize("path", ["/", "/level/1", "/level/3", "/level/8"])
+# M16 (NF-M16-8): the `.atmosphere`/`.horror-scene` decor left `/` (now the
+# neutral gateway) for the relocated map at /map/horror. The /level/* entries are
+# unchanged (theme still from cookie there). The horror landing is forced-theme,
+# so no cookie is set to select the arm.
+@pytest.mark.parametrize("path", ["/map/horror", "/level/1", "/level/3", "/level/8"])
 def test_horror_renders_decorative_scene(client, path):
     """Default/no-cookie horror theme must contain the full decorative scene."""
     html = client.get(path).text
-    assert 'class="theme-horror">' in html, path
+    assert 'class="theme-horror"' in html, path
     for marker in HORROR_SCENE_MARKERS:
         assert marker in html, f"{marker!r} missing on {path} (horror)"
 
 
-@pytest.mark.parametrize("path", ["/", "/level/1", "/level/3", "/level/8"])
+@pytest.mark.parametrize("path", ["/map/sea", "/level/1", "/level/3", "/level/8"])
 def test_sea_omits_decorative_scene(client, path):
     """The {% if theme != 'sea' %} gate must strip ALL horror decoration.
 
     This is the key regression guard: Sea must be visually unaffected.
     """
-    client.cookies.set("theme", "sea")
+    # /level/* still reads the cookie; the sea map is forced by route (/map/sea).
+    if path.startswith("/level/"):
+        client.cookies.set("theme", "sea")
     html = client.get(path).text
     assert 'class="theme-sea' in html, path
     for marker in HORROR_SCENE_MARKERS:
@@ -71,8 +77,7 @@ def test_sea_omits_decorative_scene(client, path):
 
 def test_sea_atmosphere_div_present_but_empty(client):
     """Sea still has the .atmosphere overlay (shared vignette) but no scene."""
-    client.cookies.set("theme", "sea")
-    html = client.get("/").text
+    html = client.get("/map/sea").text  # M16: forced sea map
     assert 'class="atmosphere" aria-hidden="true"' in html
     # Between the atmosphere open tag and its close, no horror-scene div.
     assert "horror-scene" not in html
@@ -89,7 +94,7 @@ def _atmosphere_block(html: str) -> str:
     return html[start:end]
 
 
-@pytest.mark.parametrize("path", ["/", "/level/1", "/level/8"])
+@pytest.mark.parametrize("path", ["/map/horror", "/level/1", "/level/8"])
 def test_atmosphere_block_is_aria_hidden(client, path):
     html = client.get(path).text
     block = _atmosphere_block(html)
@@ -98,7 +103,7 @@ def test_atmosphere_block_is_aria_hidden(client, path):
     assert 'class="horror-scene" aria-hidden="true"' in block, path
 
 
-@pytest.mark.parametrize("path", ["/", "/level/1", "/level/8"])
+@pytest.mark.parametrize("path", ["/map/horror", "/level/1", "/level/8"])
 def test_decorative_layer_has_no_interactive_elements(client, path):
     """No focusable/clickable controls inside the decorative atmosphere block.
 
@@ -124,7 +129,7 @@ def test_grid_tile_markup_contract_unchanged(client):
     # `badge-unavailable` "Lost" badge) is gone, replaced by 19 `.map-hotspot`
     # anchors. Converted to assert the equivalent Horror-map availability
     # contract so the invariant (available 1/2/8 vs sealed rest) keeps coverage.
-    html = client.get("/").text
+    html = client.get("/map/horror").text  # M16: forced horror map
     # Available hotspots keep the bare `class="map-hotspot" href="/level/{id}"`.
     available_hotspots = re.findall(
         r'<a\s+class="map-hotspot"\s+href="/level/(\d+)"', html
@@ -135,7 +140,7 @@ def test_grid_tile_markup_contract_unchanged(client):
 
 
 def test_toggle_and_slideshow_js_intact(client):
-    idx = client.get("/").text
+    idx = client.get("/map/horror").text  # M16: toggle now on the map subpage
     assert 'id="theme-toggle"' in idx
     lvl = client.get("/level/1").text
     assert 'id="slideshow"' in lvl
@@ -145,7 +150,7 @@ def test_toggle_and_slideshow_js_intact(client):
 
 def test_horror_scene_sits_outside_the_layer(client):
     """The decorative scene must live in .atmosphere (z-0), NOT in .layer (z-1)."""
-    html = client.get("/").text
+    html = client.get("/map/horror").text  # M16: forced horror map
     atmosphere = _atmosphere_block(html)
     assert "horror-scene" in atmosphere
     layer = html[html.index('<div class="layer'):]

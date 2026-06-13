@@ -237,11 +237,15 @@ def test_frame_corners_are_inert(client, theme):
 
 
 # ===========================================================================
-# 6. Cache-bust: style.css?v=8 on BOTH the level page and the index page.
+# 6. Cache-bust: style.css?v=9 on the level page, the map subpages AND the
+#    neutral gateway.  M16 (NF-M16-9) bumped ?v=8 -> ?v=9 across index.html
+#    (now served at /map/*), level.html, and the NEW gateway.html (/).
 # ===========================================================================
-@pytest.mark.parametrize("path", ["/", f"/level/{AVAILABLE_LEVEL}"])
-def test_style_css_is_v8_on_level_and_index(client, path):
+@pytest.mark.parametrize(
+    "path", ["/", "/map/horror", "/map/sea", f"/level/{AVAILABLE_LEVEL}"]
+)
+def test_style_css_is_v9_on_level_and_index(client, path):
     html = client.get(path).text
-    assert '<link rel="stylesheet" href="/static/style.css?v=8" />' in html, (
-        f"expected style.css?v=8 on {path}; level-18 lyrics bumped ?v=7 -> ?v=8"
+    assert '<link rel="stylesheet" href="/static/style.css?v=9" />' in html, (
+        f"expected style.css?v=9 on {path}; M16 chest-gateway bumped ?v=8 -> ?v=9"
     )
