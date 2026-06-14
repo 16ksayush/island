@@ -125,7 +125,11 @@ def test_gateway_has_cursive_choose_a_chest_heading(client):
     assert m is not None, "no <h1 id=\"gw-heading\"> on the gateway"
     h1_open = html[html.index("<h1"): html.index(">", html.index("<h1")) + 1]
     assert "gw-heading" in h1_open
-    assert m.group(1).strip() == "choose a chest", m.group(1)
+    inner = m.group(1)
+    # Two-tier dragon's message: a big "reward" line + a smaller call-to-action.
+    assert "gw-heading-main" in inner and "gw-heading-sub" in inner, inner
+    assert "brave soul" in inner, inner
+    assert "choose a chest" in inner, inner  # the call-to-action is preserved
 
 
 # ===========================================================================

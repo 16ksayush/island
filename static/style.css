@@ -2200,11 +2200,10 @@ a {
   z-index: 2;
   align-self: center;
   margin: auto auto 0;
-  max-width: min(86vw, 460px);
+  max-width: min(92vw, 620px);
   padding: 0.15rem 0.5rem;
   font-weight: 900;
-  font-size: clamp(1.4rem, 4.4vw, 2.6rem);
-  line-height: 1.04;
+  line-height: 1.08;
   letter-spacing: 0.03em;
   text-align: center;
   color: var(--gw-bubble-ink);
@@ -2216,6 +2215,20 @@ a {
     0 0 4px rgba(0, 0, 0, 0.85),
     0 0 12px rgba(255, 176, 0, 0.7),
     0 0 26px rgba(255, 140, 0, 0.45);
+}
+/* Two tiers: a big glowing "reward" line + a smaller call-to-action. Both
+   inherit the transparent treatment + text-shadow from .gw-heading. */
+.gw-heading-main {
+  display: block;
+  font-size: clamp(1.2rem, 3vw, 2rem);
+}
+.gw-heading-sub {
+  display: block;
+  margin-top: 0.5em;
+  font-size: clamp(0.72rem, 1.7vw, 1rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  opacity: 0.95;
 }
 /* transparent text → no speech-bubble tail */
 .gw-heading::before,
@@ -2435,13 +2448,21 @@ a {
   }
   .gw-heading {
     margin: auto auto 0;
-    width: min(82vw, 18rem);
-    max-width: min(82vw, 18rem);
-    font-size: clamp(1.2rem, 6vw, 1.9rem);
+    width: min(90vw, 24rem);
+    max-width: min(90vw, 24rem);
     padding: 0.1rem 0.4rem;
     white-space: normal;
     overflow-wrap: break-word;
     word-break: break-word;
+  }
+  .gw-heading-main {
+    font-size: clamp(0.85rem, 3.8vw, 1.25rem);
+    letter-spacing: 0.01em;
+  }
+  .gw-heading-sub {
+    margin-top: 0.5em;
+    font-size: clamp(0.6rem, 2.6vw, 0.82rem);
+    letter-spacing: 0.02em;
   }
   .gw-scrim {
     background: linear-gradient(
