@@ -58,12 +58,15 @@
     window.location.assign(destFor(state.theme));
   }
 
-  /* --- optional gateway ambient: gesture-gated + fail-silent (Q-M16-6) ----
-     The chest tap IS a user gesture, so playback is autoplay-legal. We reuse
-     the existing audio engine's playAmbient(), which builds
-     /static/audio/global/gateway_ambient.mp3 from the "gateway" key. The file
-     is NOT present yet → the <audio> element simply errors internally and the
-     engine's tryPlay()/fade() swallow it; nothing here throws or logs. */
+  /* --- gateway ambient bed: fail-silent (Q-M16-6) -------------------------
+     Reuses the audio engine's playAmbient(), which builds
+     /static/audio/global/gateway_ambient.mp3 from the "gateway" key. We attempt
+     it on load (see bottom) EXACTLY like the maps/levels do: the engine plays
+     immediately when autoplay is permitted (returning visitor / media
+     engagement) and otherwise arms its own one-shot resume on the first
+     pointer/key/touch gesture (audio-engine.js _armGesture). If the file is
+     missing the <audio> element errors internally and the engine swallows it;
+     nothing here throws or logs. */
   function startGatewayAmbient() {
     try {
       if (window.Archive19Audio && typeof window.Archive19Audio.playAmbient === "function") {
@@ -129,18 +132,10 @@
     });
   });
 
-  // Optional ambient bed: arm a one-shot start on the first user gesture
-  // anywhere on the page (autoplay-legal). Fail-silent if the file is absent.
-  (function armAmbient() {
-    var started = false;
-    function once() {
-      if (started) return;
-      started = true;
-      startGatewayAmbient();
-    }
-    var opts = { once: true, passive: true };
-    document.addEventListener("pointerdown", once, opts);
-    document.addEventListener("keydown", once, opts);
-    document.addEventListener("touchstart", once, opts);
-  })();
+  // Start the gateway ambient bed NOW — same pattern as index.html/level.html
+  // (which call playAmbient on load). The engine plays right away if autoplay is
+  // allowed, else arms its own gesture-resume on the first pointer/key/touch.
+  // (Previously the gateway only armed a gesture listener and never attempted on
+  // load, so it stayed silent even when autoplay was permitted — unlike the maps.)
+  startGatewayAmbient();
 })();
